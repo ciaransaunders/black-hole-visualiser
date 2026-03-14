@@ -1,0 +1,493 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Gemini Event Horizon — Relativistic Black Hole Visualizer</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@200;300;400;500;600&family=Space+Mono&display=swap');
+*{margin:0;padding:0;box-sizing:border-box}
+body{overflow:hidden;background:#000;font-family:'Inter',sans-serif;color:#fff;cursor:crosshair}
+canvas{display:block;position:fixed;top:0;left:0;width:100;height:100vh}
+#panel{position:fixed;top:20px;right:20px;width:300px;background:rgba(8,10,16,0.75);border:1px solid rgba(255,255,255,0.08);border-radius:16px;padding:24px;backdrop-filter:blur(32px);-webkit-backdrop-filter:blur(32px);z-index:10;transition:opacity 0.4s,transform 0.4s;box-shadow:0 12px 48px rgba(0,0,0,0.9),inset 0 1px 0 rgba(255,255,255,0.05);max-height: calc(100vh - 40px); overflow-y: auto;}
+#panel::-webkit-scrollbar { width: 4px; }
+#panel::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2); border-radius: 4px; }
+#panel.hidden{opacity:0;pointer-events:none;transform:translateX(30px)}
+.title{font-size:11px;font-weight:600;letter-spacing:6px;text-transform:uppercase;background:linear-gradient(90deg,#ff8a3d,#ff4b1f);-webkit-background-clip:text;-webkit-text-fill-color:transparent;margin-bottom:6px}
+.sub{font-size:9px;font-weight:300;letter-spacing:2px;color:rgba(255,255,255,0.4);margin-bottom:20px}
+details{margin-bottom:12px; border-bottom: 1px solid rgba(255,255,255,0.06); padding-bottom: 8px;}
+summary{font-size:9px;font-weight:500;letter-spacing:3px;text-transform:uppercase;color:rgba(255,255,255,0.7);cursor:pointer;list-style:none; margin-bottom: 12px; display:flex; justify-content:space-between; align-items:center}
+summary::-webkit-details-marker {display:none;}
+summary::after {content:'+'; font-size:14px; font-weight:300; color:rgba(255,255,255,0.4); transition: transform 0.3s;}
+details[open] summary::after {transform: rotate(45deg);}
+
+.ctrl{margin-bottom:16px}
+.cl{display:flex;justify-content:space-between;align-items:center;font-size:9px;font-weight:300;letter-spacing:1.5px;text-transform:uppercase;color:rgba(255,255,255,0.5);margin-bottom:8px}
+.cl span{font-family:'Space Mono', monospace;font-weight:500;color:rgba(255,160,100,0.9);font-size:10px}
+input[type="range"]{width:100%;-webkit-appearance:none;appearance:none;background:rgba(255,255,255,0.06);height:3px;border-radius:1px;outline:none}
+input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:12px;height:12px;background:#ff8a3d;border-radius:50%;cursor:pointer;box-shadow:0 0 12px rgba(255,100,40,0.4);transition:transform 0.15s,box-shadow 0.15s; border:1px solid #fff}
+input[type="range"]::-webkit-slider-thumb:hover{transform:scale(1.4);box-shadow:0 0 20px rgba(255,100,40,0.6)}
+
+select {width:100%; padding:8px 12px; background:rgba(0,0,0,0.4); border:1px solid rgba(255,255,255,0.1); color:#fff; border-radius:6px; font-family:'Inter',sans-serif; font-size:11px; outline:none; cursor:pointer; margin-bottom:16px; appearance:none;}
+
+.tr{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px; position:relative}
+.tr label{font-size:9px;font-weight:400;letter-spacing:1px;text-transform:uppercase;color:rgba(255,255,255,0.6);cursor:pointer}
+.tr label[data-tip]:hover::after { content: attr(data-tip); position:absolute; bottom:-25px; left:0; background:rgba(0,0,0,0.9); padding:4px 8px; border-radius:4px; font-size:8px; white-space:nowrap; z-index:20; border:1px solid rgba(255,255,255,0.1); text-transform:none; letter-spacing:0}
+
+.tg{position:relative;width:34px;height:18px;background:rgba(255,255,255,0.08);border-radius:10px;cursor:pointer;transition:background 0.3s}
+.tg.on{background:rgba(255,100,40,0.5)}
+.tg::after{content:'';position:absolute;top:2px;left:2px;width:14px;height:14px;background:rgba(255,255,255,0.6);border-radius:50%;transition:transform 0.3s,background 0.3s}
+.tg.on::after{transform:translateX(16px);background:#fff; box-shadow:0 0 8px rgba(255,150,100,0.8)}
+
+#hud{position:fixed;top:20px;left:20px;display:flex;gap:24px;font-family:'Space Mono',monospace;font-size:10px;color:rgba(255,255,255,0.5);letter-spacing:1px;z-index:10; text-transform:uppercase}
+.hud-v{color:#ff8a3d; font-weight:600; margin-left:6px; font-size:11px}
+
+#cinematic{position:fixed;bottom:30px;left:50%;transform:translateX(-50%);display:flex;gap:12px;z-index:10; background:rgba(0,0,0,0.5); padding:8px; border-radius:30px; border:1px solid rgba(255,255,255,0.05); backdrop-filter:blur(10px)}
+.cbtn{background:transparent; border:1px solid rgba(255,255,255,0.2); color:rgba(255,255,255,0.8); padding:8px 16px; border-radius:20px; font-family:'Inter',sans-serif; font-size:9px; font-weight:500; letter-spacing:2px; text-transform:uppercase; cursor:pointer; transition:all 0.3s}
+.cbtn:hover{background:rgba(255,255,255,0.1); border-color:#ff8a3d; color:#fff}
+.cbtn.active{background:rgba(255,100,40,0.2); border-color:#ff8a3d; color:#ff8a3d}
+
+#toggle-btn{position:fixed;top:24px;right:340px;width:32px;height:32px;background:rgba(0,0,0,0.5);border:1px solid rgba(255,255,255,0.1);border-radius:8px;color:rgba(255,255,255,0.6);font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;z-index:11;transition:all 0.3s;}
+#toggle-btn:hover{background:rgba(255,255,255,0.1); color:#fff}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<button id="toggle-btn" title="Toggle UI">⚙</button>
+
+<div id="hud">
+  <div>FPS <span class="hud-v" id="hud-fps">60</span></div>
+  <div>Rg <span class="hud-v" id="hud-rg">1.0</span></div>
+  <div>ISCO <span class="hud-v" id="hud-isco">3.0</span></div>
+  <div>Time Dil <span class="hud-v" id="hud-time">1.000</span></div>
+</div>
+
+<div id="cinematic">
+  <button class="cbtn active" id="btn-free">Free Cam</button>
+  <button class="cbtn" id="btn-orbit">Orbit Tour</button>
+  <button class="cbtn" id="btn-photon">Photon Ring</button>
+</div>
+
+<div id="panel">
+  <div class="title">Gemini Event Horizon</div>
+  <div class="sub">Relativistic Physics V2</div>
+
+  <select id="preset">
+    <option value="custom">Custom Configuration</option>
+    <option value="m87">M87* (EHT Observation)</option>
+    <option value="sgra">Sgr A* (Milky Way)</option>
+    <option value="kerr">Extremal Kerr (a=0.99)</option>
+    <option value="schwarz">Schwarzschild (a=0.0)</option>
+  </select>
+  
+  <details open>
+    <summary>Physics</summary>
+    <div class="ctrl"><div class="cl">Mass (M☉) <span id="v-mass">0.50</span></div><input type="range" id="mass" min="0.1" max="2.0" step="0.01" value="0.50"></div>
+    <div class="ctrl"><div class="cl">Spin (a) <span id="v-spin">0.65</span></div><input type="range" id="spin" min="0.0" max="0.998" step="0.001" value="0.65"></div>
+    <div class="ctrl"><div class="cl">Inclination <span id="v-incl">0.0</span></div><input type="range" id="incl" min="-0.2" max="1.57" step="0.01" value="0.0"></div>
+    <div class="ctrl"><div class="cl">Obs. Distance <span id="v-zoom">5.0</span></div><input type="range" id="zoom" min="1.8" max="20.0" step="0.1" value="5.0"></div>
+  </details>
+
+  <details open>
+    <summary>Accretion Disk</summary>
+    <div class="ctrl"><div class="cl">Thickness <span id="v-thick">0.12</span></div><input type="range" id="thick" min="0.01" max="0.5" step="0.01" value="0.12"></div>
+    <div class="ctrl"><div class="cl">Plasma Temp <span id="v-temp">1.00</span></div><input type="range" id="temp" min="0.3" max="2.0" step="0.01" value="1.00"></div>
+    <div class="ctrl"><div class="cl">Luminosity <span id="v-glow">3.5</span></div><input type="range" id="glow" min="0.0" max="10.0" step="0.1" value="3.5"></div>
+  </details>
+
+  <details open>
+    <summary>Modules</summary>
+    <div class="tr"><label data-tip="Linear Polarization Magnetic Field Overlay">Polarization Map</label><div class="tg" id="t-polar" data-uniform="u_polar"></div></div>
+    <div class="tr"><label data-tip="Asymmetric rendering of n=1 & n=2 sub-rings">Kerr Sub-rings</label><div class="tg on" id="t-kerr" data-uniform="u_kerr"></div></div>
+    <div class="tr"><label data-tip="Relativistic Doppler blue/red shifting">Doppler Beaming</label><div class="tg on" id="t-dopp" data-uniform="u_dopp"></div></div>
+    <div class="tr"><label data-tip="MHD Propagating Shock Waves">Relativistic Jets</label><div class="tg on" id="t-jets" data-uniform="u_jets"></div></div>
+    <div class="tr"><label data-tip="Quantum field fluctuations at horizon">Hawking Radiation</label><div class="tg" id="t-hawk" data-uniform="u_hawk"></div></div>
+    <div class="tr"><label data-tip="Total Gravitational + Kinematic shift">Redshift Heatmap</label><div class="tg" id="t-red" data-uniform="u_red"></div></div>
+    <div class="tr"><label>Bloom / Glare</label><div class="tg on" id="t-bloom" data-uniform="u_bloom"></div></div>
+  </details>
+</div>
+
+<script id="vs" type="x-shader/x-vertex">
+attribute vec2 a_pos;
+void main(){gl_Position=vec4(a_pos,0.0,1.0);}
+</script>
+
+<script id="fs" type="x-shader/x-fragment">
+precision highp float;
+
+uniform vec2 u_res;
+uniform float u_time;
+uniform vec2 u_mouse;
+uniform float u_mass, u_spin, u_incl, u_glow, u_zoom, u_thick, u_temp;
+uniform float u_polar, u_kerr, u_dopp, u_jets, u_hawk, u_red, u_bloom;
+
+#define PI 3.14159265
+#define TAU 6.28318530
+#define STEPS 150
+#define ESC 35.0
+
+mat2 rot(float a){float s=sin(a),c=cos(a);return mat2(c,-s,s,c);}
+float hash21(vec2 p){vec3 p3=fract(vec3(p.xyx)*vec3(.1031,.103,.0973));p3+=dot(p3,p3.yzx+33.33);return fract((p3.x+p3.y)*p3.z);}
+float noise(vec2 p){
+    vec2 i=floor(p),f=fract(p);
+    vec2 u=f*f*f*(f*(f*6.0-15.0)+10.0);
+    return mix(mix(hash21(i),hash21(i+vec2(1,0)),u.x),mix(hash21(i+vec2(0,1)),hash21(i+vec2(1,1)),u.x),u.y);
+}
+float fbm(vec2 p){
+    float v=0.0,a=0.5; mat2 m=mat2(0.8,0.6,-0.6,0.8);
+    for(int i=0;i<5;i++){v+=a*noise(p);p=m*p*2.0;a*=0.5;}
+    return v;
+}
+vec3 aces(vec3 x){return clamp((x*(2.51*x+0.03))/(x*(2.43*x+0.59)+0.14),0.0,1.0);}
+vec3 blackbody(float t){
+    t*=u_temp; vec3 c;
+    c.r=1.0/(exp(4800.0/(t*4000.0+1000.0))-1.0);
+    c.g=1.0/(exp(4800.0/(t*3200.0+800.0))-1.0);
+    c.b=1.0/(exp(4800.0/(t*2400.0+600.0))-1.0);
+    return clamp(c/max(c.r,max(c.g,c.b)+0.001),0.0,1.0);
+}
+
+void main(){
+    vec2 uv=(gl_FragCoord.xy-0.5*u_res.xy)/u_res.y;
+
+    float camDist=u_zoom;
+    float orbitSpeed=u_mouse.x; // controlled by JS cinema mode
+    float angleY=orbitSpeed;
+    float angleX=u_incl; // directly bounded to inclination slider
+
+    vec3 ro=vec3(0.0,0.0,-camDist);
+    ro.yz*=rot(angleX);
+    ro.xz*=rot(angleY);
+
+    vec3 fwd=normalize(-ro);
+    vec3 right=normalize(cross(vec3(0,1,0),fwd));
+    vec3 up=cross(fwd,right);
+    vec3 rd=normalize(fwd+uv.x*right+uv.y*up);
+
+    float rs=u_mass;
+    float a=u_spin*rs*0.5;
+    float risco=rs*(3.0+sqrt(max(0.0,9.0-8.0*a/rs)));
+    float accInner=max(rs*1.05,risco*0.5);
+    float accOuter=rs*9.0;
+    float diskH=u_thick;
+
+    vec3 col=vec3(0.0);
+    vec3 p=ro,dir=rd;
+    float minDist=100.0;
+    bool fellIn=false;
+    float totalDiskLight=0.0;
+
+    for(int i=0;i<STEPS;i++){
+        vec3 toC=-p;
+        float d=length(p);
+        minDist=min(minDist,d);
+        float step_=max(0.015,d*0.035);
+
+        // Frame dragging and Gravitational lens
+        float fMag=(rs*2.0)/(d*d+0.05);
+        vec3 force=normalize(toC)*fMag;
+        
+        // Kerr frame dragging metric approximation
+        float fd=0.0;
+        if(u_kerr>0.5){
+            vec3 tang=normalize(cross(vec3(0,1,0),toC));
+            fd=(u_spin*2.5*rs*rs)/(d*d*d+0.1);
+            force+=tang*fd;
+        }
+
+        dir=normalize(dir+force*step_*0.5);
+        vec3 prevP=p;
+        p+=dir*step_;
+
+        if(d<rs*0.95){fellIn=true;break;}
+
+        // ACCRETION DISK
+        if(prevP.y*p.y<0.0||abs(p.y)<diskH){
+            float t=clamp(-prevP.y/(p.y-prevP.y+0.0001),0.0,1.0);
+            vec3 isect=prevP+(p-prevP)*t;
+            float r=length(isect.xz);
+
+            if(r>accInner&&r<accOuter&&r>rs*1.01){
+                float tempCurve=pow(accInner/r,1.2);
+                vec3 diskCol=blackbody(tempCurve);
+                
+                // Polarization Map Overlay
+                if(u_polar>0.5){
+                    float angle=atan(isect.z,isect.x);
+                    float reversal=sin(u_time*0.5)*PI*0.3;
+                    float evpa=sin((angle+reversal)*40.0+r*25.0);
+                    float polLines=smoothstep(0.8,0.95,abs(evpa));
+                    diskCol=mix(diskCol,vec3(1.0,0.8,0.2),polLines*0.8);
+                }
+
+                // Relativistic Doppler Beaming
+                vec3 plasmaVel=normalize(vec3(-isect.z,0.0,isect.x))*(0.5+fd);
+                float beta=length(plasmaVel);
+                float cosTheta=dot(normalize(plasmaVel),normalize(ro-isect));
+                
+                float doppler=1.0;
+                float beaming=1.0;
+                if(u_dopp>0.5){
+                    doppler=sqrt(1.0-beta*beta)/(max(0.001, 1.0-beta*cosTheta));
+                    beaming=pow(doppler,3.0);
+                    vec3 blue=vec3(0.5,0.8,1.2), red=vec3(1.2,0.5,0.3);
+                    diskCol*=mix(red,blue,smoothstep(0.5,1.5,doppler));
+                }
+
+                // Redshift Heatmap Override
+                if(u_red>0.5){
+                    float zGrav=1.0/max(0.1,sqrt(1.0-rs/r))-1.0;
+                    float zKin=(1.0+beta*cosTheta)/sqrt(1.0-beta*beta)-1.0;
+                    float zTotal=(1.0+zGrav)*(1.0+zKin)-1.0;
+                    diskCol=mix(vec3(0,0.2,1),vec3(1,0,0),clamp(zTotal*0.8,0.0,1.0));
+                    beaming=1.0; 
+                }
+
+                float vertFade=exp(-abs(isect.y)/(diskH*0.5+0.01));
+                float horizFade=smoothstep(accInner,accInner+0.2,r)*smoothstep(accOuter,accOuter-1.0,r);
+                
+                // Turbulence
+                float turb=fbm(vec2(r*4.0,atan(isect.z,isect.x)*8.0-u_time*(0.5+fd)));
+                
+                float brightness=(0.3+0.7*turb)*vertFade*horizFade*beaming*tempCurve;
+                col+=diskCol*brightness*u_glow*0.25;
+                totalDiskLight+=brightness;
+            }
+        }
+
+        // MHD JETS 
+        if(u_jets>0.5){
+            float cylR=length(p.xz);
+            float jetH=abs(p.y);
+            float kh=sin(jetH*8.0-u_time*4.0)*0.02; // Kelvin-Helmholtz instability
+            float jetW=0.06+jetH*0.03+kh;
+            
+            if(cylR<jetW&&jetH>rs*1.5&&jetH<rs*20.0){
+                float twist=jetH*2.0+u_time*1.5;
+                vec2 pt=mat2(cos(twist),-sin(twist),sin(twist),cos(twist))*p.xz;
+                
+                float core=exp(-length(pt)/(jetW*0.4));
+                float shocks=pow(0.5+0.5*sin(jetH*6.0-u_time*10.0),4.0);
+                
+                vec3 jc=mix(vec3(0.1,0.3,1.0),vec3(0.8,0.9,1.0),core+shocks*0.5);
+                float jFade=exp(-jetH/(rs*8.0))*smoothstep(rs*1.5,rs*2.5,jetH);
+                
+                col+=jc*core*(1.0+shocks)*jFade*u_glow*0.08;
+            }
+        }
+        if(d>ESC) break; // Reached stars
+    }
+
+    // Event Horizon & Photon Rings
+    if(!fellIn){
+        float baseR=rs*(u_kerr>0.5?1.4:1.6);
+        // n=1 ring
+        float gw1=rs*0.04;
+        float r1=exp(-pow((minDist-baseR)/gw1,2.0));
+        col+=vec3(1.0,0.85,0.6)*r1*u_glow*0.6;
+        
+        // n=2 subring (Kerr structure)
+        if(u_kerr>0.5){
+            float gw2=rs*0.008;
+            float r2=exp(-pow((minDist-baseR*0.96)/gw2,2.0));
+            col+=vec3(1.0,0.95,0.8)*r2*u_glow*0.5;
+        }
+    }else if(u_hawk>0.5){
+        // Hawking Radiation quantum foam glow
+        float horizonFade=exp(-abs(minDist-rs)*20.0);
+        float foam=hash21(dir.xy*200.0+u_time*15.0);
+        col+=vec3(0.5,0.1,0.8)*foam*horizonFade*2.0;
+    }
+
+    if(u_bloom>0.5){
+        float lum=dot(col,vec3(0.299,0.587,0.114));
+        col+=col*max(0.0,lum-0.5)*0.6;
+        col+=vec3(1.0,0.7,0.4)*totalDiskLight*0.005;
+    }
+
+    col=aces(col*1.2);
+    col=pow(col,vec3(0.4545));
+    // Subtle vignette
+    vec2 vig=gl_FragCoord.xy/u_res-0.5;
+    col*=1.0-dot(vig,vig)*0.4;
+
+    gl_FragColor=vec4(col,1.0);
+}
+</script>
+
+<script>
+const canvas=document.getElementById('c');
+const gl=canvas.getContext('webgl',{antialias:false});
+
+function mkShader(type,id){
+    const s=gl.createShader(type);
+    gl.shaderSource(s,document.getElementById(id).text);
+    gl.compileShader(s);
+    return s;
+}
+
+const prog=gl.createProgram();
+gl.attachShader(prog,mkShader(gl.VERTEX_SHADER,'vs'));
+gl.attachShader(prog,mkShader(gl.FRAGMENT_SHADER,'fs'));
+gl.linkProgram(prog);
+gl.useProgram(prog);
+
+const buf=gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER,buf);
+gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([-1,-1,1,-1,-1,1,-1,1,1,-1,1,1]),gl.STATIC_DRAW);
+const aPos=gl.getAttribLocation(prog,'a_pos');
+gl.enableVertexAttribArray(aPos);
+gl.vertexAttribPointer(aPos,2,gl.FLOAT,false,0,0);
+
+const U={};
+['u_res','u_time','u_mouse','u_mass','u_spin','u_incl','u_glow','u_zoom','u_thick','u_temp',
+ 'u_polar','u_kerr','u_dopp','u_jets','u_hawk','u_red','u_bloom'].forEach(n=>U[n]=gl.getUniformLocation(prog,n));
+
+const els={};
+['mass','spin','incl','zoom','thick','temp','glow'].forEach(id=>{
+    els[id]=document.getElementById(id);
+    els[id].addEventListener('input', updateValues);
+});
+
+// State
+let t_polar=0, t_kerr=1, t_dopp=1, t_jets=1, t_hawk=0, t_red=0, t_bloom=1;
+let animX=0, animY=0, orbitAngle=0;
+let cinMode='free'; 
+
+document.querySelectorAll('.tg').forEach(el=>{
+    let active = el.classList.contains('on');
+    eval(`${el.id.replace('-','_')} = ${active?1:0}`);
+    
+    el.addEventListener('click',()=>{
+        active = !active;
+        el.classList.toggle('on');
+        eval(`${el.id.replace('-','_')} = ${active?1:0}`);
+        if(el.id==='t-red'){
+            document.getElementById('t-dopp').classList.toggle('on', !active);
+            t_dopp = !active?1:0;
+        }
+    });
+});
+
+const presets = {
+    'm87': { mass:1.5, spin:0.9, incl:0.3, zoom:6.0, thick:0.25, temp:1.2, glow:5.0, jets:1 },
+    'sgra': { mass:0.2, spin:0.1, incl:0.8, zoom:3.5, thick:0.4, temp:0.8, glow:2.0, jets:0 },
+    'kerr': { mass:0.8, spin:0.998, incl:1.57, zoom:4.5, thick:0.05, temp:1.5, glow:4.5, jets:1 },
+    'schwarz': { mass:1.0, spin:0.0, incl:1.57, zoom:5.0, thick:0.15, temp:1.0, glow:3.0, jets:0 }
+};
+
+document.getElementById('preset').addEventListener('change', e=>{
+    if(e.target.value === 'custom') return;
+    const p = presets[e.target.value];
+    Object.keys(p).forEach(k=>{ 
+        if(els[k]) els[k].value = p[k]; 
+    });
+    setToggle('t-jets', p.jets);
+    updateValues();
+});
+
+function setToggle(id, val){
+    const el = document.getElementById(id);
+    if(val && !el.classList.contains('on')) el.click();
+    if(!val && el.classList.contains('on')) el.click();
+}
+
+function updateValues(){
+    ['mass','spin','incl','zoom','thick','temp','glow'].forEach(id=>{
+        document.getElementById(`v-${id}`).textContent=parseFloat(els[id].value).toFixed(2);
+    });
+    document.getElementById('preset').value = 'custom';
+}
+
+document.querySelectorAll('.cbtn').forEach(btn=>{
+    btn.addEventListener('click', e=>{
+        document.querySelectorAll('.cbtn').forEach(b=>b.classList.remove('active'));
+        e.target.classList.add('active');
+        cinMode = e.target.id.split('-')[1];
+    });
+});
+
+let dragging=false, curX=0, curY=0;
+canvas.addEventListener('mousedown',e=>{dragging=true; curX=e.clientX;});
+window.addEventListener('mouseup',()=>dragging=false);
+window.addEventListener('mousemove',e=>{
+    if(dragging && cinMode==='free'){
+        animX += (e.clientX-curX)*0.01;
+        curX=e.clientX;
+    }
+});
+canvas.addEventListener('wheel',e=>{
+    els.zoom.value=Math.max(1.8, Math.min(20, parseFloat(els.zoom.value)+e.deltaY*0.005));
+    updateValues();
+});
+
+document.getElementById('toggle-btn').addEventListener('click', e=>{
+    document.getElementById('panel').classList.toggle('hidden');
+});
+window.addEventListener('keydown', e=>{
+    if(e.key==='h'||e.key==='H') document.getElementById('panel').classList.toggle('hidden');
+});
+
+function resize(){
+    const dpr=Math.min(window.devicePixelRatio,2.0);
+    canvas.width=window.innerWidth*dpr;
+    canvas.height=window.innerHeight*dpr;
+    gl.viewport(0,0,canvas.width,canvas.height);
+}
+window.addEventListener('resize',resize);
+resize();
+
+let frames=0, lastFps=0, fps=60;
+function render(t){
+    t*=0.001;
+    frames++;
+    if(t-lastFps>=1.0){
+        fps=frames; frames=0; lastFps=t;
+        document.getElementById('hud-fps').textContent=fps;
+        
+        let m = parseFloat(els.mass.value);
+        let a = parseFloat(els.spin.value);
+        let isco = m*(3.0+Math.sqrt(Math.max(0, 9.0-8.0*a/m)));
+        document.getElementById('hud-rg').textContent=(m*2.0).toFixed(2);
+        document.getElementById('hud-isco').textContent=isco.toFixed(2);
+    }
+    
+    if(cinMode==='orbit'){
+        animX -= 0.002;
+    }else if(cinMode==='photon'){
+        animX -= 0.005;
+        els.zoom.value = parseFloat(els.zoom.value) * 0.99 + (parseFloat(els.mass.value)*3.5) * 0.01;
+        updateValues();
+    }
+    
+    let dist = parseFloat(els.zoom.value);
+    let rs = parseFloat(els.mass.value)*2.0;
+    let dilation = Math.sqrt(Math.max(0.001, 1.0 - rs/dist));
+    document.getElementById('hud-time').textContent=dilation.toFixed(3);
+
+    gl.uniform2f(U.u_res,canvas.width,canvas.height);
+    gl.uniform1f(U.u_time,t);
+    gl.uniform2f(U.u_mouse,animX,animY);
+    gl.uniform1f(U.u_mass,parseFloat(els.mass.value));
+    gl.uniform1f(U.u_spin,parseFloat(els.spin.value));
+    gl.uniform1f(U.u_incl,parseFloat(els.incl.value));
+    gl.uniform1f(U.u_glow,parseFloat(els.glow.value));
+    gl.uniform1f(U.u_zoom,dist);
+    gl.uniform1f(U.u_thick,parseFloat(els.thick.value));
+    gl.uniform1f(U.u_temp,parseFloat(els.temp.value));
+    
+    gl.uniform1f(U.u_polar,t_polar);
+    gl.uniform1f(U.u_kerr,t_kerr);
+    gl.uniform1f(U.u_dopp,t_dopp);
+    gl.uniform1f(U.u_jets,t_jets);
+    gl.uniform1f(U.u_hawk,t_hawk);
+    gl.uniform1f(U.u_red,t_red);
+    gl.uniform1f(U.u_bloom,t_bloom);
+
+    gl.drawArrays(gl.TRIANGLES,0,6);
+    requestAnimationFrame(render);
+}
+requestAnimationFrame(render);
+</script>
+</body>
+</html>
