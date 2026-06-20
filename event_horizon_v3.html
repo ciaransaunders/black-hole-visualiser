@@ -1,0 +1,1344 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Event Horizon v2 — Kerr Black Hole Simulator</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@200;300;400;500&family=Outfit:wght@200;300;400;500;600;700&display=swap');
+*{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --bg:rgba(4,4,14,0.72);
+  --accent:rgba(255,140,60,1);
+  --accent-dim:rgba(255,140,60,0.35);
+  --accent-glow:rgba(255,120,50,0.15);
+  --text:rgba(255,255,255,0.45);
+  --text-bright:rgba(255,200,160,0.85);
+  --text-dim:rgba(255,255,255,0.18);
+  --border:rgba(255,140,60,0.06);
+  --border-hover:rgba(255,140,60,0.15);
+  --surface:rgba(255,255,255,0.03);
+  --radius:14px;
+  --font-mono:'JetBrains Mono',monospace;
+  --font-ui:'Outfit',sans-serif;
+}
+body{overflow:hidden;background:#000;font-family:var(--font-ui);color:#fff;cursor:crosshair;-webkit-font-smoothing:antialiased}
+canvas{display:block;position:fixed;top:0;left:0;width:100vw;height:100vh}
+
+/* ── Title bar ── */
+#header{position:fixed;top:16px;left:20px;z-index:10;pointer-events:none}
+#header h1{font-family:var(--font-mono);font-size:11px;font-weight:500;letter-spacing:6px;text-transform:uppercase;background:linear-gradient(90deg,#ff9a5c,#ff6b3d);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+#header .sub{font-family:var(--font-mono);font-size:8px;font-weight:200;letter-spacing:3px;color:var(--text-dim);margin-top:2px;text-transform:uppercase}
+
+/* ── HUD ── */
+#hud{position:fixed;top:16px;right:290px;z-index:10;display:flex;gap:16px;pointer-events:none;font-family:var(--font-mono);font-size:9px;font-weight:300;letter-spacing:1px;color:var(--text-dim);text-transform:uppercase}
+#hud .hud-item span{color:var(--text);font-weight:400}
+#hud.shifted{right:20px}
+
+/* ── Physics readout ── */
+#physics-hud{position:fixed;bottom:16px;left:20px;z-index:10;pointer-events:none;font-family:var(--font-mono);font-size:8px;font-weight:300;letter-spacing:0.8px;color:var(--text-dim);line-height:1.8;opacity:0;transition:opacity 0.4s}
+#physics-hud.visible{opacity:1}
+#physics-hud span{color:rgba(255,180,130,0.5);font-weight:400}
+
+/* ── Panel ── */
+#panel{position:fixed;top:16px;right:16px;width:258px;max-height:calc(100vh - 32px);background:var(--bg);border:1px solid var(--border);border-radius:var(--radius);backdrop-filter:blur(28px);-webkit-backdrop-filter:blur(28px);z-index:10;transition:opacity 0.4s,transform 0.4s;box-shadow:0 8px 40px rgba(0,0,0,0.7),inset 0 1px 0 rgba(255,255,255,0.02);overflow-y:auto;overflow-x:hidden;scrollbar-width:none}
+#panel::-webkit-scrollbar{display:none}
+#panel.hidden{opacity:0;pointer-events:none;transform:translateX(16px)}
+
+/* ── Tabs ── */
+.tabs{display:flex;border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--bg);backdrop-filter:blur(28px);z-index:2;padding:0 4px}
+.tab{flex:1;padding:14px 0 10px;text-align:center;font-size:9px;font-weight:500;letter-spacing:2.5px;text-transform:uppercase;color:var(--text-dim);cursor:pointer;position:relative;transition:color 0.25s}
+.tab:hover{color:var(--text)}
+.tab.active{color:var(--text-bright)}
+.tab.active::after{content:'';position:absolute;bottom:-1px;left:20%;right:20%;height:1px;background:var(--accent);box-shadow:0 0 8px var(--accent-glow)}
+.tab-content{display:none;padding:16px 16px 12px}
+.tab-content.active{display:block}
+
+/* ── Section headers ── */
+.section-head{font-size:8px;font-weight:500;letter-spacing:2.5px;text-transform:uppercase;color:var(--text-dim);margin:12px 0 10px;padding-bottom:4px}
+.section-head:first-child{margin-top:2px}
+
+/* ── Sliders ── */
+.ctrl{margin-bottom:10px}
+.cl{display:flex;justify-content:space-between;align-items:center;font-size:8px;font-weight:300;letter-spacing:1.5px;text-transform:uppercase;color:var(--text);margin-bottom:5px}
+.cl span{font-family:var(--font-mono);font-weight:400;color:var(--text-bright);font-size:9px;font-variant-numeric:tabular-nums}
+input[type="range"]{width:100%;-webkit-appearance:none;appearance:none;background:rgba(255,255,255,0.04);height:2px;border-radius:1px;outline:none;transition:background 0.2s}
+input[type="range"]:hover{background:rgba(255,255,255,0.08)}
+input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:10px;height:10px;background:var(--accent);border-radius:50%;cursor:pointer;box-shadow:0 0 8px rgba(255,120,60,0.25);transition:transform 0.15s,box-shadow 0.15s}
+input[type="range"]::-webkit-slider-thumb:hover{transform:scale(1.4);box-shadow:0 0 16px rgba(255,120,60,0.4)}
+
+/* ── Toggles ── */
+.tr{display:flex;justify-content:space-between;align-items:center;margin-bottom:7px;padding:2px 0}
+.tr label{font-size:8px;font-weight:300;letter-spacing:1.3px;text-transform:uppercase;color:var(--text);cursor:pointer;flex:1}
+.tr .info-tip{font-size:7px;color:var(--text-dim);cursor:help;margin-right:8px;opacity:0;transition:opacity 0.2s}
+.tr:hover .info-tip{opacity:1}
+.tg{position:relative;width:28px;height:14px;background:rgba(255,255,255,0.05);border-radius:7px;cursor:pointer;transition:background 0.25s;flex-shrink:0}
+.tg.on{background:var(--accent-dim)}
+.tg::after{content:'';position:absolute;top:2px;left:2px;width:10px;height:10px;background:rgba(255,255,255,0.3);border-radius:50%;transition:transform 0.25s,background 0.25s}
+.tg.on::after{transform:translateX(14px);background:var(--text-bright)}
+
+/* ── Presets dropdown ── */
+.preset-group{margin-bottom:10px}
+.preset-select{width:100%;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:7px 10px;color:var(--text-bright);font-family:var(--font-ui);font-size:9px;font-weight:300;letter-spacing:1px;outline:none;cursor:pointer;-webkit-appearance:none;appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='8' viewBox='0 0 24 24' fill='none' stroke='rgba(255,180,130,0.5)' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 10px center}
+.preset-select option{background:#0a0a14;color:#ccc}
+
+/* ── Performance buttons ── */
+.perf-grid{display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-bottom:12px}
+.perf-btn{padding:7px 0;text-align:center;font-size:8px;font-weight:400;letter-spacing:1.5px;text-transform:uppercase;color:var(--text);background:var(--surface);border:1px solid var(--border);border-radius:8px;cursor:pointer;transition:all 0.2s}
+.perf-btn:hover{border-color:var(--border-hover);color:var(--text-bright)}
+.perf-btn.active{border-color:var(--accent-dim);color:var(--text-bright);background:rgba(255,140,60,0.06)}
+
+/* ── Cinematic buttons ── */
+.cine-row{display:flex;gap:5px;margin:10px 0}
+.cine-btn{flex:1;padding:8px 0;text-align:center;font-size:8px;font-weight:400;letter-spacing:1.2px;text-transform:uppercase;color:var(--text);background:var(--surface);border:1px solid var(--border);border-radius:8px;cursor:pointer;transition:all 0.25s}
+.cine-btn:hover{border-color:var(--border-hover);color:var(--text-bright)}
+.cine-btn.active{border-color:rgba(100,180,255,0.3);color:rgba(150,200,255,0.9);background:rgba(80,150,255,0.06)}
+
+/* ── Separator ── */
+.sep{height:1px;background:var(--border);margin:10px 0}
+
+/* ── Footer hint ── */
+.hint{font-size:7px;font-weight:200;color:var(--text-dim);text-align:center;margin-top:8px;letter-spacing:0.4px;line-height:1.8}
+
+/* ── Toggle button ── */
+#toggle-btn{position:fixed;top:20px;right:282px;width:24px;height:24px;background:rgba(0,0,0,0.25);border:1px solid var(--border);border-radius:7px;color:var(--text-dim);font-size:11px;cursor:pointer;display:flex;align-items:center;justify-content:center;z-index:11;transition:all 0.3s;font-family:var(--font-ui)}
+#toggle-btn:hover{background:var(--accent-glow);border-color:var(--border-hover);color:var(--text-bright)}
+
+/* ── Tooltip ── */
+.tooltip{position:fixed;background:rgba(4,4,14,0.92);border:1px solid var(--border);border-radius:8px;padding:8px 10px;font-size:8px;font-weight:300;color:var(--text);letter-spacing:0.3px;line-height:1.6;max-width:200px;z-index:100;pointer-events:none;opacity:0;transition:opacity 0.2s;backdrop-filter:blur(12px)}
+.tooltip.show{opacity:1}
+
+/* ── Scrollbar for content ── */
+@media(max-height:700px){
+  #panel{max-height:calc(100vh - 32px)}
+}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+
+<div id="header">
+  <h1>Event Horizon</h1>
+  <div class="sub">Relativistic Black Hole Visualizer</div>
+</div>
+
+<div id="hud">
+  <div class="hud-item">FPS <span id="hud-fps">--</span></div>
+  <div class="hud-item">R<sub>s</sub> <span id="hud-rs">--</span></div>
+  <div class="hud-item">Redshift z <span id="hud-z">--</span></div>
+  <div class="hud-item">Dilation τ <span id="hud-tau">--</span></div>
+</div>
+
+<div id="physics-hud">
+  <div>Schwarzschild Radius: <span id="ph-rs">--</span></div>
+  <div>ISCO: <span id="ph-isco">--</span> R<sub>g</sub></div>
+  <div>Ergosphere: <span id="ph-ergo">--</span> R<sub>g</sub></div>
+  <div>Hawking Temp: <span id="ph-hawk">--</span></div>
+  <div>Angular Mom: J = <span id="ph-J">--</span></div>
+  <div>Photon Sphere: <span id="ph-photon">--</span> R<sub>g</sub></div>
+</div>
+
+<button id="toggle-btn" title="Toggle panel [H]">⚙</button>
+
+<div id="panel">
+  <div class="tabs">
+    <div class="tab active" data-tab="physics">Physics</div>
+    <div class="tab" data-tab="modules">Modules</div>
+    <div class="tab" data-tab="system">System</div>
+  </div>
+
+  <!-- ═══════ PHYSICS TAB ═══════ -->
+  <div class="tab-content active" id="tab-physics">
+    <div class="section-head">Preset</div>
+    <div class="preset-group">
+      <select class="preset-select" id="preset-select">
+        <option value="custom">Custom</option>
+        <option value="m87">M87* (EHT)</option>
+        <option value="sgra">Sgr A*</option>
+        <option value="gargantua" selected>Gargantua</option>
+        <option value="schwarzschild">Schwarzschild (a=0)</option>
+        <option value="kerr-ext">Kerr Extremal (a≈1)</option>
+        <option value="gw231123">GW231123 Remnant</option>
+        <option value="oj287">OJ 287 Binary</option>
+        <option value="cygx1">Cygnus X-1</option>
+      </select>
+    </div>
+
+    <div class="section-head">Black Hole</div>
+    <div class="ctrl"><div class="cl">Mass (M<sub>☉</sub>) <span id="v-mass">10.0</span></div><input type="range" id="mass" min="0.1" max="1.2" step="0.01" value="0.50"></div>
+    <div class="ctrl"><div class="cl">Spin (a/M) <span id="v-spin">0.65</span></div><input type="range" id="spin" min="0.0" max="0.998" step="0.001" value="0.65"></div>
+    <div class="ctrl"><div class="cl">Inclination <span id="v-incl">75°</span></div><input type="range" id="incl" min="5" max="90" step="1" value="75"></div>
+    <div class="ctrl"><div class="cl">Observer Dist <span id="v-zoom">5.0</span></div><input type="range" id="zoom" min="1.8" max="16.0" step="0.1" value="5.0"></div>
+
+    <div class="section-head">Accretion Disk</div>
+    <div class="ctrl"><div class="cl">Luminosity <span id="v-glow">3.5</span></div><input type="range" id="glow" min="0.0" max="10.0" step="0.1" value="3.5"></div>
+    <div class="ctrl"><div class="cl">Disk Height <span id="v-thick">0.12</span></div><input type="range" id="thick" min="0.02" max="0.5" step="0.01" value="0.12"></div>
+    <div class="ctrl"><div class="cl">Temperature <span id="v-temp">1.00</span></div><input type="range" id="temp" min="0.3" max="2.0" step="0.01" value="1.00"></div>
+    <div class="ctrl"><div class="cl">Turbulence <span id="v-turb">0.60</span></div><input type="range" id="turb" min="0.0" max="1.0" step="0.01" value="0.60"></div>
+
+    <div class="section-head">Jets</div>
+    <div class="ctrl"><div class="cl">Jet Power <span id="v-jetpow">0.60</span></div><input type="range" id="jetpow" min="0.0" max="1.0" step="0.01" value="0.60"></div>
+    <div class="ctrl"><div class="cl">Helical Pitch <span id="v-helix">0.50</span></div><input type="range" id="helix" min="0.0" max="1.0" step="0.01" value="0.50"></div>
+
+    <div class="section-head">Environment</div>
+    <div class="ctrl"><div class="cl">Star Density <span id="v-stardens">0.70</span></div><input type="range" id="stardens" min="0.0" max="1.0" step="0.01" value="0.70"></div>
+    <div class="ctrl"><div class="cl">Galaxy Tilt <span id="v-galaxtilt">0.30</span></div><input type="range" id="galaxtilt" min="0.0" max="1.0" step="0.01" value="0.30"></div>
+
+    <div class="sep"></div>
+    <div class="section-head">Cinematic</div>
+    <div class="cine-row">
+      <div class="cine-btn" id="cine-orbit">Orbit Tour</div>
+      <div class="cine-btn" id="cine-infall">Infall Dive</div>
+    </div>
+    <div class="cine-row">
+      <div class="cine-btn" id="cine-photon">Photon Orbit</div>
+      <div class="cine-btn" id="cine-grand">Grand Tour</div>
+    </div>
+    <div class="cine-row">
+      <div class="cine-btn" id="cine-stop">Stop</div>
+    </div>
+  </div>
+
+  <!-- ═══════ MODULES TAB ═══════ -->
+  <div class="tab-content" id="tab-modules">
+    <div class="section-head">Physics Modules</div>
+    <div class="tr"><label>Gravitational Lensing</label><span class="info-tip" data-tip="Light bending in curved spacetime per the Kerr metric">?</span><div class="tg on" id="t-lensing" data-on="true"></div></div>
+    <div class="tr"><label>Accretion Disk</label><span class="info-tip" data-tip="Volumetric disk with MHD turbulence and blackbody emission">?</span><div class="tg on" id="t-disk" data-on="true"></div></div>
+    <div class="tr"><label>Doppler Beaming</label><span class="info-tip" data-tip="Relativistic brightening of the approaching disk side (v/c effects)">?</span><div class="tg on" id="t-doppler" data-on="true"></div></div>
+    <div class="tr"><label>Photon Sphere</label><span class="info-tip" data-tip="Light orbits at r = 1.5 Rₛ (Schwarzschild) showing n=1,2 sub-rings">?</span><div class="tg on" id="t-photon" data-on="true"></div></div>
+    <div class="tr"><label>Background Stars</label><span class="info-tip" data-tip="Multi-layer star field distorted by gravitational lensing — density of visible stars">?</span><div class="tg on" id="t-stars" data-on="true"></div></div>
+    <div class="tr"><label>Milky Way</label><span class="info-tip" data-tip="Galactic plane band — dramatically reveals gravitational lensing distortion and Einstein ring arcs">?</span><div class="tg on" id="t-milkyway" data-on="true"></div></div>
+    <div class="tr"><label>Lensing Glow</label><span class="info-tip" data-tip="Gravitational magnification — stars near the photon sphere appear amplified as rays bunch together">?</span><div class="tg on" id="t-lensglow" data-on="true"></div></div>
+    <div class="tr"><label>Bloom</label><span class="info-tip" data-tip="HDR bloom post-processing for bright regions">?</span><div class="tg on" id="t-bloom" data-on="true"></div></div>
+    <div class="tr"><label>Relativistic Jets</label><span class="info-tip" data-tip="Bipolar jets with helical B-field and Kelvin-Helmholtz instabilities">?</span><div class="tg on" id="t-jets" data-on="true"></div></div>
+    <div class="tr"><label>Nebula</label><span class="info-tip" data-tip="Background nebula environment via fBm noise">?</span><div class="tg on" id="t-neb" data-on="true"></div></div>
+    <div class="sep"></div>
+    <div class="section-head">Advanced Overlays</div>
+    <div class="tr"><label>Polarization Map</label><span class="info-tip" data-tip="EHT-style EVPA tick marks showing B-field topology on the disk">?</span><div class="tg" id="t-polar" data-on="false"></div></div>
+    <div class="tr"><label>Redshift Heatmap</label><span class="info-tip" data-tip="Gravitational + kinematic redshift colormapped across the disk">?</span><div class="tg" id="t-redshift" data-on="false"></div></div>
+    <div class="tr"><label>Ergosphere</label><span class="info-tip" data-tip="Renders the oblate ergosphere boundary where frame-dragging exceeds c">?</span><div class="tg" id="t-ergo" data-on="false"></div></div>
+    <div class="tr"><label>ISCO Marker</label><span class="info-tip" data-tip="Innermost Stable Circular Orbit — no stable orbits exist below this">?</span><div class="tg" id="t-isco" data-on="false"></div></div>
+    <div class="tr"><label>Hawking Radiation</label><span class="info-tip" data-tip="Artistic quantum vacuum fluctuation glow at the event horizon boundary">?</span><div class="tg" id="t-hawking" data-on="false"></div></div>
+    <div class="tr"><label>Physics Readout</label><span class="info-tip" data-tip="Derived quantities: Rₛ, ISCO, Hawking temp, angular momentum">?</span><div class="tg" id="t-physhud" data-on="false"></div></div>
+  </div>
+
+  <!-- ═══════ SYSTEM TAB ═══════ -->
+  <div class="tab-content" id="tab-system">
+    <div class="section-head">Performance</div>
+    <div class="perf-grid">
+      <div class="perf-btn" data-perf="0.5">Max Perf</div>
+      <div class="perf-btn" data-perf="0.75">Balanced</div>
+      <div class="perf-btn" data-perf="1.0">High</div>
+      <div class="perf-btn active" data-perf="1.5">Ultra</div>
+    </div>
+
+    <div class="section-head">Render</div>
+    <div class="ctrl"><div class="cl">Scale <span id="v-scale">100%</span></div><input type="range" id="scale" min="25" max="150" step="5" value="100"></div>
+    <div class="ctrl"><div class="cl">Bloom Radius <span id="v-bloomr">2.5</span></div><input type="range" id="bloomr" min="0" max="8" step="0.1" value="2.5"></div>
+    <div class="ctrl"><div class="cl">Bloom Strength <span id="v-blooms">0.45</span></div><input type="range" id="blooms" min="0" max="1.5" step="0.01" value="0.45"></div>
+    <div class="ctrl"><div class="cl">Exposure <span id="v-expos">1.15</span></div><input type="range" id="expos" min="0.3" max="3.0" step="0.01" value="1.15"></div>
+
+    <div class="section-head">Post-Processing</div>
+    <div class="ctrl"><div class="cl">Vignette <span id="v-vign">0.35</span></div><input type="range" id="vign" min="0" max="1" step="0.01" value="0.35"></div>
+    <div class="ctrl"><div class="cl">Film Grain <span id="v-grain">0.08</span></div><input type="range" id="grain" min="0" max="0.5" step="0.01" value="0.08"></div>
+    <div class="ctrl"><div class="cl">Chromatic Ab. <span id="v-ca">0.008</span></div><input type="range" id="ca" min="0" max="0.05" step="0.001" value="0.008"></div>
+    <div class="ctrl"><div class="cl">Gamma <span id="v-gamma">2.20</span></div><input type="range" id="gamma" min="1.0" max="3.0" step="0.01" value="2.20"></div>
+
+    <div class="sep"></div>
+    <div class="section-head">Export</div>
+    <div class="cine-row">
+      <div class="cine-btn" id="btn-screenshot">Screenshot</div>
+    </div>
+
+    <div class="sep"></div>
+    <div class="hint">Drag to orbit · Scroll to zoom · H hide UI<br>I physics HUD · P polarization · M milky way<br>R redshift · E ergosphere · J jets<br>1-4 cinematic modes · 5 grand tour · Double-click reset</div>
+  </div>
+</div>
+
+<div class="tooltip" id="tooltip"></div>
+
+<script id="vs" type="x-shader/x-vertex">
+attribute vec2 a_pos;
+void main(){gl_Position=vec4(a_pos,0.0,1.0);}
+</script>
+
+<script id="fs" type="x-shader/x-fragment">
+precision highp float;
+
+uniform vec2 u_res;
+uniform float u_time;
+uniform vec2 u_mouse;
+uniform float u_mass, u_spin, u_glow, u_zoom, u_thick, u_temp, u_turb;
+uniform float u_incl;
+uniform float u_jets, u_bloom, u_neb, u_doppler, u_disk, u_lensing, u_stars;
+uniform float u_polar, u_redshift, u_ergo, u_isco_vis, u_hawking, u_photon_ring;
+uniform float u_milkyway, u_lensglow, u_stardens, u_galaxtilt;
+uniform float u_jetpow, u_helix;
+uniform float u_vign, u_grain, u_ca, u_gamma, u_expos, u_blooms, u_bloomr;
+uniform float u_orbit_mode; // 0=manual, 1=orbit, 2=infall, 3=photon orbit
+uniform float u_cine_time;
+
+#define PI 3.14159265
+#define TAU 6.28318530
+#define STEPS 180
+#define ESC 40.0
+
+mat2 rot(float a){float s=sin(a),c=cos(a);return mat2(c,-s,s,c);}
+
+float hash31(vec3 p){p=fract(p*vec3(443.897,441.423,437.195));p+=dot(p,p.yzx+19.19);return fract((p.x+p.y)*p.z);}
+float hash21(vec2 p){vec3 p3=fract(vec3(p.xyx)*vec3(.1031,.103,.0973));p3+=dot(p3,p3.yzx+33.33);return fract((p3.x+p3.y)*p3.z);}
+
+float noise(vec2 p){
+    vec2 i=floor(p),f=fract(p);
+    vec2 u=f*f*f*(f*(f*6.0-15.0)+10.0);
+    float a=hash21(i),b=hash21(i+vec2(1,0)),c=hash21(i+vec2(0,1)),d=hash21(i+vec2(1,1));
+    return mix(mix(a,b,u.x),mix(c,d,u.x),u.y);
+}
+
+float fbm(vec2 p){
+    float v=0.0,a=0.5;
+    mat2 m=mat2(0.8,0.6,-0.6,0.8);
+    for(int i=0;i<6;i++){v+=a*noise(p);p=m*p*2.03;a*=0.47;}
+    return v;
+}
+
+float fbm3(vec2 p){
+    float v=0.0,a=0.5;
+    mat2 m=mat2(0.866,0.5,-0.5,0.866);
+    for(int i=0;i<4;i++){v+=a*noise(p);p=m*p*2.1;a*=0.45;}
+    return v;
+}
+
+vec3 aces(vec3 x){
+    float a=2.51,b=0.03,c=2.43,d=0.59,e=0.14;
+    return clamp((x*(a*x+b))/(x*(c*x+d)+e),0.0,1.0);
+}
+
+// ── Multi-layer star field with spectral classes ──
+// Layer 1: Dense background (dim, many)
+// Layer 2: Medium stars (moderate brightness, colored)
+// Layer 3: Bright prominent stars (few, vivid colors, twinkle)
+// Layer 4: Star clusters (dense pockets)
+
+float starLayer(vec3 rd, float density, float threshold){
+    vec3 cell = floor(rd * density);
+    float h = hash31(cell);
+    // Subpixel position within cell for point-like appearance
+    vec3 cellCenter = (cell + 0.5) / density;
+    float distToCenter = length(rd - normalize(cellCenter)) * density;
+    float pointSpread = exp(-distToCenter*distToCenter*2.0); // PSF
+    return step(threshold, h) * pointSpread;
+}
+
+vec3 richStarField(vec3 rd, float magnification){
+    vec3 col = vec3(0.0);
+    float dens = u_stardens;
+
+    // Layer 1: Dense faint background — thousands of dim points
+    {
+        vec3 cell = floor(rd * 800.0);
+        float h = hash31(cell);
+        float b = step(0.992 - dens*0.008, h) * 0.12;
+        // Very subtle warm/cool tint
+        float hue = hash31(cell + 1.0);
+        vec3 tint = mix(vec3(0.9,0.9,1.0), vec3(1.0,0.95,0.85), hue);
+        col += tint * b;
+    }
+
+    // Layer 2: Medium stars — moderate count, visible color
+    {
+        vec3 cell = floor(rd * 400.0);
+        float h = hash31(cell);
+        float b = step(0.985 - dens*0.012, h) * pow(h, 80.0) * 0.8;
+        // Spectral class coloring: O(blue) B(bluewhite) A(white) F(yellowwhite) G(yellow) K(orange) M(red)
+        float spec = hash31(cell + 7.7);
+        vec3 starCol;
+        if(spec < 0.05) starCol = vec3(0.6,0.7,1.0);       // O-type: hot blue
+        else if(spec < 0.15) starCol = vec3(0.75,0.85,1.0);  // B-type: blue-white
+        else if(spec < 0.35) starCol = vec3(0.95,0.95,1.0);  // A-type: white
+        else if(spec < 0.50) starCol = vec3(1.0,0.98,0.9);   // F-type: yellow-white
+        else if(spec < 0.70) starCol = vec3(1.0,0.92,0.7);   // G-type: yellow (Sun-like)
+        else if(spec < 0.88) starCol = vec3(1.0,0.75,0.5);   // K-type: orange
+        else starCol = vec3(1.0,0.55,0.35);                   // M-type: red dwarf
+        // Gentle twinkle
+        b *= 0.8 + 0.2*sin(u_time*2.5 + h*80.0);
+        col += starCol * b;
+    }
+
+    // Layer 3: Bright prominent stars — rare, vivid, strong twinkle
+    {
+        vec3 cell = floor(rd * 150.0);
+        float h = hash31(cell);
+        float isBright = step(0.994 - dens*0.004, h);
+        float b = isBright * pow(h, 20.0) * 2.2;
+        // Diffraction spikes (cross pattern)
+        vec3 cellCenter = (cell + 0.5) / 150.0;
+        vec3 delta = rd - normalize(cellCenter);
+        float dx = abs(delta.x);
+        float dy = abs(delta.y);
+        float spike = exp(-dx*5000.0) * exp(-dy*200.0) + exp(-dy*5000.0) * exp(-dx*200.0);
+        b += isBright * spike * 0.6;
+        // Strong twinkle
+        b *= 0.6 + 0.4*sin(u_time*4.0 + h*200.0);
+        float spec = hash31(cell + 3.3);
+        vec3 starCol = mix(vec3(0.7,0.85,1.0), vec3(1.0,0.8,0.5), spec);
+        col += starCol * b;
+    }
+
+    // Layer 4: Star clusters — dense bright patches
+    {
+        vec3 cell = floor(rd * 30.0);
+        float clusterH = hash31(cell + 99.0);
+        float isCluster = step(0.88, clusterH);
+        if(isCluster > 0.5){
+            // Extra-dense stars within cluster cells
+            vec3 cell2 = floor(rd * 1200.0);
+            float h2 = hash31(cell2 + 5.5);
+            float b = step(0.96 - dens*0.03, h2) * 0.3;
+            float warmth = hash31(cell + 11.0);
+            vec3 cCol = mix(vec3(0.8,0.9,1.0), vec3(1.0,0.85,0.6), warmth);
+            // Cluster has a soft background glow
+            float clusterGlow = isCluster * 0.02 * dens;
+            col += cCol * (b + clusterGlow);
+        }
+    }
+
+    // Gravitational magnification — amplify stars near photon sphere
+    col *= magnification;
+
+    return col;
+}
+
+// ── Galactic plane / Milky Way band ──
+vec3 milkyWay(vec3 rd){
+    // Tilt the galactic plane
+    float tilt = u_galaxtilt * PI * 0.5;
+    vec3 tiltedRd = rd;
+    tiltedRd.yz *= rot(tilt);
+    tiltedRd.xz *= rot(0.3); // slight azimuthal rotation
+
+    // Galactic latitude (how far from the plane)
+    float galLat = asin(clamp(tiltedRd.y, -1.0, 1.0));
+    float galLon = atan(tiltedRd.z, tiltedRd.x);
+
+    // Main band — narrow concentrated strip
+    float bandWidth = 0.18;
+    float band = exp(-galLat*galLat / (bandWidth*bandWidth));
+
+    // Structure within the band — dust lanes, bright regions, dark rifts
+    vec2 galUV = vec2(galLon, galLat*8.0);
+    float n1 = fbm(galUV * 3.0 + 1.7);
+    float n2 = fbm(galUV * 6.0 - 2.3);
+    float n3 = fbm(galUV * 1.5 + vec2(4.2, -0.8));
+
+    // Bright star-forming regions (HII regions — pinkish)
+    float hii = pow(max(0.0, n1 - 0.45), 2.0) * 3.0;
+
+    // Dark dust lanes (absorption)
+    float dust = smoothstep(0.35, 0.55, n2) * 0.6;
+
+    // Overall luminosity variation
+    float lumVar = 0.5 + 0.5 * n3;
+
+    // Core bulge — brighter toward galactic center
+    float bulge = exp(-galLon*galLon*0.3) * exp(-galLat*galLat*8.0) * 0.4;
+
+    // Color composition
+    vec3 bandCol = vec3(0.0);
+    // Main starlight: warm white
+    bandCol += vec3(0.85, 0.82, 0.75) * band * lumVar * (1.0 - dust) * 0.12;
+    // Blue young stars in arms
+    bandCol += vec3(0.5, 0.6, 0.9) * band * pow(max(0.0, n1-0.3), 2.0) * 0.08;
+    // HII regions (emission nebulae — pink/red)
+    bandCol += vec3(0.9, 0.3, 0.4) * hii * band * 0.03;
+    // Galactic bulge (warm golden)
+    bandCol += vec3(1.0, 0.85, 0.6) * bulge * 0.1;
+
+    // Dense star field along the plane
+    float planeDens = band * 0.7;
+    vec3 cell = floor(tiltedRd * 600.0);
+    float h = hash31(cell + 42.0);
+    float planeStars = step(0.985 - planeDens*0.04, h) * 0.25 * band;
+    float starHue = hash31(cell + 13.0);
+    vec3 planeStarCol = mix(vec3(0.8,0.85,1.0), vec3(1.0,0.9,0.7), starHue);
+    bandCol += planeStarCol * planeStars;
+
+    return bandCol;
+}
+
+vec3 nebula(vec3 rd){
+    vec2 uv=vec2(atan(rd.z,rd.x),asin(clamp(rd.y,-1.0,1.0)));
+    float n1=fbm3(uv*1.8+0.5);
+    float n2=fbm3(uv*3.5-2.1);
+    float n3=fbm3(uv*2.2+vec2(3.7,-1.3));
+    vec3 col=vec3(0.0);
+    col+=vec3(0.10,0.02,0.08)*smoothstep(0.3,0.75,n1);
+    col+=vec3(0.02,0.04,0.12)*smoothstep(0.35,0.8,n2);
+    col+=vec3(0.06,0.01,0.03)*smoothstep(0.4,0.85,n3);
+    return col*0.35;
+}
+
+// Physically-motivated blackbody
+vec3 blackbody(float t){
+    t*=u_temp;
+    vec3 c;
+    c.r=1.0/(exp(4800.0/(t*4000.0+1000.0))-1.0);
+    c.g=1.0/(exp(4800.0/(t*3200.0+800.0))-1.0);
+    c.b=1.0/(exp(4800.0/(t*2400.0+600.0))-1.0);
+    return clamp(c/max(c.r,max(c.g,c.b)+0.001),0.0,1.0);
+}
+
+// Redshift-to-color mapping (blue=approaching, red=receding)
+vec3 redshiftColor(float z){
+    // z < 0 = blueshift, z > 0 = redshift
+    float t=clamp(z*0.5+0.5,0.0,1.0); // 0=max blue, 1=max red
+    vec3 blue=vec3(0.2,0.4,1.0);
+    vec3 white=vec3(1.0,1.0,0.95);
+    vec3 red=vec3(1.0,0.3,0.1);
+    return t<0.5 ? mix(blue,white,t*2.0) : mix(white,red,(t-0.5)*2.0);
+}
+
+// Polarization tick mark pattern (EHT-style EVPA)
+float polarizationField(vec2 diskPos, float angle, float r, float spinA){
+    // Magnetic field topology: toroidal + poloidal components
+    // The field spirals — direction depends on spin and radius
+    float toroidal = angle + spinA * 2.0 / (r + 0.5);
+    // Temporal evolution — polarization flip as observed by EHT in M87*
+    float phase = sin(u_time * 0.15) * PI; // slow oscillation representing multi-year evolution
+    float fieldAngle = toroidal + phase;
+
+    // Create tick-mark pattern using screen-space derivatives
+    vec2 fieldDir = vec2(cos(fieldAngle), sin(fieldAngle));
+    vec2 uv = diskPos * 15.0;
+    float grid = abs(fract(dot(uv, fieldDir) * 0.5) - 0.5) * 2.0;
+    float ticks = smoothstep(0.35, 0.38, grid) * smoothstep(0.65, 0.62, grid);
+
+    // Modulate by field strength (stronger near ISCO)
+    float strength = 1.0 / (r * 0.8 + 0.3);
+    return ticks * clamp(strength, 0.0, 1.0);
+}
+
+void main(){
+    vec2 uv=(gl_FragCoord.xy-0.5*u_res.xy)/u_res.y;
+
+    float camDist = u_zoom;
+    float inclRad = u_incl * PI / 180.0;
+
+    // Camera — cinematic modes
+    float angleY, angleX;
+    if(u_orbit_mode < 0.5){
+        // Manual
+        angleY = (u_mouse.x/u_res.x)*TAU+PI;
+        angleX = ((u_mouse.y/u_res.y)-0.5)*2.8;
+    } else if(u_orbit_mode < 1.5){
+        // Auto orbit
+        angleY = u_time*0.06 + (u_mouse.x/u_res.x)*TAU;
+        angleX = ((u_mouse.y/u_res.y)-0.5)*2.8;
+    } else if(u_orbit_mode < 2.5){
+        // Infall dive
+        angleY = u_time*0.03;
+        angleX = -0.25;
+        camDist = max(1.6, u_zoom - u_cine_time * 0.4);
+    } else {
+        // Photon orbit — circle at r ≈ 1.5 Rs
+        float pR = u_mass * 1.5 * 2.5;
+        angleY = u_time * 0.25;
+        angleX = -0.15;
+        camDist = pR;
+    }
+
+    // Apply inclination to view angle
+    angleX = clamp(angleX + (inclRad - PI*0.5)*0.35, -1.4, 1.4);
+
+    vec3 ro = vec3(0.0, 0.0, -camDist);
+    ro.yz *= rot(angleX);
+    ro.xz *= rot(angleY);
+
+    vec3 fwd = normalize(-ro);
+    vec3 right = normalize(cross(vec3(0,1,0), fwd));
+    vec3 up = cross(fwd, right);
+    vec3 rd = normalize(fwd + uv.x*right + uv.y*up);
+
+    float rs = u_mass;
+    float a = u_spin * rs * 0.5;
+    // Kerr ISCO: prograde
+    float z1 = 1.0 + pow(1.0 - (a/rs)*(a/rs), 1.0/3.0) * (pow(1.0+a/rs, 1.0/3.0) + pow(max(0.001,1.0-a/rs), 1.0/3.0));
+    float z2 = sqrt(3.0*(a/rs)*(a/rs) + z1*z1);
+    float risco = rs * (3.0 + z2 - sqrt(max(0.0, (3.0-z1)*(3.0+z1+2.0*z2))));
+    float accInner = max(rs*1.35, risco*0.45);
+    float accOuter = rs*9.0;
+    float diskH = u_thick;
+
+    // Ergosphere boundary (equatorial)
+    float ergoR = rs * (1.0 + sqrt(max(0.0, 1.0 - (a/rs)*(a/rs))));
+
+    vec3 col = vec3(0.0);
+    vec3 p = ro, dir = rd;
+    float minDist = 100.0;
+    bool fellIn = false;
+    float totalDiskLight = 0.0;
+
+    for(int i=0; i<STEPS; i++){
+        vec3 toC = -p;
+        float d = length(p);
+        minDist = min(minDist, d);
+
+        float step_ = max(0.01, d*0.032);
+
+        if(u_lensing > 0.5){
+            // Gravitational deflection (pseudo-Kerr)
+            float fMag = (rs*2.2)/(d*d + 0.04);
+            vec3 force = normalize(toC)*fMag;
+
+            // Frame-dragging: tangential force from spin
+            vec3 tang = normalize(cross(vec3(0,1,0), toC));
+            float fd = a*2.5/(d*d*d + 0.3);
+            force += tang*fd;
+
+            dir = normalize(dir + force*step_*0.5);
+        }
+
+        vec3 prevP = p;
+        p += dir * step_;
+
+        if(d < rs*0.92){ fellIn = true; break; }
+
+        // ── Ergosphere visualization ──
+        if(u_ergo > 0.5){
+            // Oblate ergosphere: larger at equator, touches horizon at poles
+            float theta = acos(clamp(p.y/d, -1.0, 1.0));
+            float ergoLocal = rs*(1.0 + sqrt(max(0.0, 1.0 - (a*a/(rs*rs))*cos(theta)*cos(theta))));
+            float ergoDist = abs(d - ergoLocal);
+            float ergoLine = exp(-ergoDist*ergoDist*800.0);
+            col += vec3(0.15, 0.55, 0.9) * ergoLine * 0.3;
+        }
+
+        // ── ISCO marker ring ──
+        if(u_isco_vis > 0.5 && abs(p.y) < diskH*2.0){
+            float cylR = length(p.xz);
+            float iscoDist = abs(cylR - risco);
+            float iscoLine = exp(-iscoDist*iscoDist*2000.0);
+            float iscoVert = exp(-abs(p.y)/(diskH*1.5));
+            col += vec3(1.0, 0.3, 0.3) * iscoLine * iscoVert * 0.2;
+        }
+
+        // ── Hawking radiation (artistic quantum foam at horizon) ──
+        if(u_hawking > 0.5){
+            float horizDist = d - rs*0.95;
+            if(horizDist > 0.0 && horizDist < rs*0.3){
+                float hFade = exp(-horizDist/(rs*0.08));
+                float qNoise = noise(vec2(d*60.0 + u_time*8.0, atan(p.z,p.x)*20.0));
+                float qNoise2 = noise(vec2(p.y*80.0 - u_time*5.0, d*40.0));
+                float sparks = pow(qNoise*qNoise2, 3.0);
+                vec3 hCol = mix(vec3(0.8,0.9,1.0), vec3(0.4,0.6,1.0), qNoise);
+                col += hCol * sparks * hFade * 0.15;
+            }
+        }
+
+        // ── Volumetric accretion disk ──
+        if(u_disk > 0.5 && (prevP.y*p.y < 0.0 || abs(p.y) < diskH)){
+            float t = clamp(-prevP.y/(p.y-prevP.y+0.0001), 0.0, 1.0);
+            vec3 isect = prevP + (p-prevP)*t;
+            float r = length(isect.xz);
+
+            if(r > accInner && r < accOuter && r > rs*1.02){
+                float angle = atan(isect.z, isect.x);
+                float aN = angle/TAU + 0.5;
+                float fd = a*2.5/(r*r*r + 0.3);
+                float orbSpd = 3.5/(r*r + 0.08) + fd*0.4;
+
+                // Rich MHD turbulence
+                float turbMix = u_turb;
+                float n1 = fbm(vec2(r*4.0, aN*14.0 + u_time*orbSpd));
+                float n2 = fbm(vec2(r*8.0, aN*28.0 + u_time*orbSpd*1.4));
+                float n3 = fbm(vec2(r*2.0-u_time*0.3, aN*6.0 + u_time*orbSpd*0.7));
+                float turb = mix(mix(n1,n2,0.35), n3, 0.2);
+
+                // Spiral arms (magnetic field winding)
+                float spiral = 0.5+0.5*sin(r*8.0 - angle*4.0 - u_time*orbSpd*2.5);
+                turb = mix(turb, spiral, 0.18*turbMix);
+
+                // Ring structure
+                float rings = 0.5+0.5*sin(r*25.0 - u_time*orbSpd*1.2);
+                turb = mix(turb, rings, 0.12*turbMix);
+
+                // Hot filaments (magnetic reconnection sites)
+                float fil = pow(fbm(vec2(r*12.0+u_time*0.5, aN*40.0)), 2.0);
+                turb += fil*0.15*turbMix;
+
+                float temp = pow(accInner/r, 1.15);
+                vec3 diskCol = blackbody(temp);
+
+                // Edge fading
+                float innerFade = smoothstep(accInner, accInner+0.18, r);
+                float outerFade = smoothstep(accOuter, accOuter-1.5, r);
+                float horizFade = smoothstep(rs*1.02, rs*1.7, r);
+                float edge = innerFade * outerFade * horizFade;
+
+                float vertFade = exp(-abs(isect.y)/(diskH*0.7+0.005));
+
+                // ── Doppler beaming (relativistic) ──
+                vec3 vel = normalize(vec3(-isect.z, 0.0, isect.x));
+                float doppler = dot(vel, normalize(ro-isect));
+                float beam = 1.0;
+                if(u_doppler > 0.5){
+                    // Relativistic beaming: I_obs = I_em * D^3 where D = 1/gamma(1-beta*cos)
+                    float beta = min(0.8, sqrt(rs/(2.0*r))); // orbital velocity ~ sqrt(M/r)
+                    float D = 1.0/(1.0 - beta*doppler + 0.01);
+                    beam = D*D*D;
+                    beam = clamp(beam, 0.05, 8.0);
+
+                    // Doppler color shift
+                    vec3 blueShift = vec3(0.75, 0.88, 1.3);
+                    vec3 redShift = vec3(1.3, 0.82, 0.65);
+                    diskCol *= mix(redShift, blueShift, 0.5+0.5*doppler);
+                } else {
+                    beam = pow(0.5+0.5*doppler, 3.5)*2.8;
+                }
+
+                float brightness = (0.1+0.9*turb)*edge*vertFade*beam*temp;
+                vec3 contrib = diskCol * brightness * u_glow * 0.32;
+
+                // ── Redshift heatmap overlay ──
+                if(u_redshift > 0.5){
+                    // Combined gravitational + kinematic redshift
+                    float grav_z = 1.0/sqrt(max(0.001, 1.0 - rs/r)) - 1.0;
+                    float kin_z = -doppler * min(0.6, sqrt(rs/(2.0*r)));
+                    float total_z = grav_z + kin_z;
+                    vec3 zCol = redshiftColor(total_z);
+                    contrib = mix(contrib, zCol * brightness * 0.5, 0.6);
+                }
+
+                // ── Polarization overlay ──
+                if(u_polar > 0.5){
+                    float polField = polarizationField(isect.xz, angle, r, a);
+                    vec3 polCol = vec3(0.4, 0.8, 1.0);
+                    contrib += polCol * polField * brightness * 0.2;
+                }
+
+                col += contrib;
+                totalDiskLight += brightness;
+            }
+        }
+
+        // ── Relativistic jets with helical B-field ──
+        if(u_jets > 0.5){
+            float cylR = length(p.xz);
+            float jetH = abs(p.y);
+            float signY = sign(p.y);
+
+            // Jet width expands with height (conical + collimation)
+            float jetW = 0.06 + jetH*0.035;
+            float jetPow = u_jetpow;
+
+            if(cylR < jetW*1.5 && jetH > rs*1.8 && jetH < rs*22.0){
+                float jd = exp(-cylR/(jetW*0.45));
+                float jf = exp(-jetH/(rs*9.0));
+
+                // Helical magnetic field structure
+                float helixAngle = atan(p.z, p.x);
+                float helixPhase = helixAngle + jetH*u_helix*12.0 - u_time*2.0*signY;
+                float helixPattern = 0.5+0.5*sin(helixPhase);
+
+                // Kelvin-Helmholtz instabilities at boundary
+                float boundaryR = cylR/jetW;
+                float khWave = sin(jetH*8.0 + helixAngle*3.0 - u_time*1.5)*0.5+0.5;
+                float khAmplitude = smoothstep(0.5, 1.0, boundaryR) * smoothstep(1.5, 1.0, boundaryR);
+                float kh = khWave * khAmplitude;
+
+                // Propagating shock features (inspired by OJ 287 observations)
+                float shock1 = exp(-pow(mod(jetH - u_time*0.8, rs*6.0) - rs*1.0, 2.0)*4.0);
+                float shock2 = exp(-pow(mod(jetH - u_time*0.5, rs*8.0) - rs*2.0, 2.0)*3.0);
+
+                // Turbulence
+                float jt = noise(vec2(jetH*6.0, u_time*2.5+cylR*12.0));
+                float jt2 = noise(vec2(jetH*3.0-u_time*1.5, cylR*8.0));
+                jt = mix(jt, jt2, 0.4);
+
+                // Color: blue core → purple base → white shocks
+                vec3 jc = mix(vec3(0.25,0.45,1.0), vec3(0.7,0.85,1.0), jt);
+                float baseFade = smoothstep(rs*1.8, rs*4.0, jetH);
+                jc = mix(vec3(0.5,0.2,0.8), jc, baseFade);
+
+                // Add helical structure coloring
+                jc = mix(jc, vec3(0.3,0.6,1.0), helixPattern*0.3*u_helix);
+
+                // Bright shock fronts
+                jc += vec3(0.8,0.9,1.0) * (shock1+shock2*0.6) * 0.4;
+
+                // KH instabilities add orange edge glow
+                jc += vec3(1.0,0.6,0.2) * kh * 0.15;
+
+                float jetBright = jd*jf*jt*jetPow;
+                col += jc * jetBright * u_glow * 0.14;
+            }
+        }
+
+        if(d > ESC){
+            // ── Gravitational magnification ──
+            // Rays that passed closer to the photon sphere were deflected more.
+            // The angular bunching of light rays near the photon sphere amplifies
+            // background source brightness (gravitational lensing magnification).
+            float deflection = acos(clamp(dot(rd, dir), -1.0, 1.0));
+            float magnification = 1.0;
+            if(u_lensglow > 0.5){
+                // Rays grazing the photon sphere get amplified
+                float photonProx = rs*1.5;
+                float proxFactor = exp(-pow((minDist - photonProx)/(rs*0.5), 2.0));
+                magnification = 1.0 + proxFactor * 3.0 + deflection * 0.5;
+                magnification = clamp(magnification, 1.0, 6.0);
+            }
+
+            // Rich multi-layer star field (already gravitationally lensed via dir)
+            if(u_stars > 0.5){
+                col += richStarField(dir, magnification);
+            }
+
+            // Milky Way galactic plane
+            if(u_milkyway > 0.5){
+                vec3 mw = milkyWay(dir);
+                // Milky Way also gets magnified near photon sphere
+                col += mw * (u_lensglow > 0.5 ? magnification : 1.0);
+            }
+
+            // Nebula
+            if(u_neb > 0.5) col += nebula(dir);
+
+            // ── Einstein ring glow ──
+            // Rays that wrap nearly 180° around create the Einstein ring effect.
+            // This appears as a faint bright ring at the shadow boundary.
+            if(u_lensglow > 0.5){
+                float einsteinGlow = exp(-pow((minDist - rs*1.55)/(rs*0.08), 2.0));
+                einsteinGlow *= smoothstep(0.0, 0.3, deflection); // only for significantly bent rays
+                col += vec3(0.9, 0.92, 1.0) * einsteinGlow * 0.12;
+            }
+            break;
+        }
+    }
+
+    // ── Photon ring structure ──
+    if(!fellIn && u_photon_ring > 0.5){
+        float photonR = rs*1.5;
+
+        // n=1 primary ring
+        float gw = rs*0.10;
+        float glow = exp(-pow((minDist-photonR)/gw, 2.0));
+        glow *= smoothstep(0.003, 0.035, glow);
+        vec3 ringCol = mix(vec3(1.0,0.82,0.6), vec3(1.0,0.95,0.9), glow);
+        col += ringCol * glow * u_glow * 0.75;
+
+        // n=2 secondary ring (narrower, dimmer — this is what BHEX will resolve)
+        float gw2 = rs*0.025;
+        float glow2 = exp(-pow((minDist-photonR*0.97)/gw2, 2.0));
+        col += vec3(1.0,0.88,0.75) * glow2 * u_glow * 0.25;
+
+        // n=3 tertiary (very faint)
+        float gw3 = rs*0.012;
+        float glow3 = exp(-pow((minDist-photonR*0.95)/gw3, 2.0));
+        col += vec3(1.0,0.92,0.82) * glow3 * u_glow * 0.08;
+
+        // Spin-dependent asymmetry: brighter on prograde side
+        if(u_spin > 0.01){
+            float asymAngle = atan(dir.z, dir.x);
+            float asym = 0.5 + 0.5*sin(asymAngle);
+            float spinBoost = u_spin * 0.3 * asym;
+            col += ringCol * glow * spinBoost * 0.2;
+        }
+    }
+
+    // ── Bloom ──
+    if(u_bloom > 0.5){
+        float lum = dot(col, vec3(0.2126,0.7152,0.0722));
+        float bloomRadius = clamp(u_bloomr / 8.0, 0.0, 1.0);
+        float bloomThreshold = mix(0.85, 0.35, bloomRadius);
+        float bloomSoftness = mix(0.03, 0.25, bloomRadius);
+        float bloomAmt = smoothstep(bloomThreshold, bloomThreshold + bloomSoftness, lum);
+        col += col * bloomAmt * u_blooms;
+        float diskGlow = totalDiskLight * mix(0.004, 0.012, bloomRadius);
+        col += vec3(1.0,0.7,0.4) * diskGlow;
+    }
+
+    // ── Post-processing ──
+    col = aces(col * u_expos);
+    col = pow(col, vec3(1.0/u_gamma));
+
+    // Vignette
+    vec2 vig = gl_FragCoord.xy/u_res - 0.5;
+    col *= 1.0 - dot(vig,vig) * u_vign;
+
+    // Chromatic aberration
+    float cdist = length(vig);
+    float caAmt = cdist*cdist*u_ca;
+    col.r *= 1.0+caAmt;
+    col.b *= 1.0-caAmt;
+
+    // Film grain
+    if(u_grain > 0.001){
+        float grainNoise = hash21(gl_FragCoord.xy*0.5 + fract(u_time*7.3)) - 0.5;
+        col += grainNoise * u_grain;
+    }
+
+    // Dither
+    float dither = hash21(gl_FragCoord.xy+fract(u_time)) - 0.5;
+    col += dither*(1.5/255.0);
+
+    gl_FragColor = vec4(max(col, vec3(0.0)), 1.0);
+}
+</script>
+
+<script>
+// ═══════════════════════════════════════════
+//  EVENT HORIZON v2.0 — Engine
+// ═══════════════════════════════════════════
+
+const canvas = document.getElementById('c');
+const gl = canvas.getContext('webgl', {antialias:false, preserveDrawingBuffer:true});
+if(!gl) document.body.innerHTML='<p style="color:red;padding:40px">WebGL not supported in this browser.</p>';
+
+// ── Shader compilation ──
+function mkShader(type,src){
+    const s=gl.createShader(type);
+    gl.shaderSource(s,src);
+    gl.compileShader(s);
+    if(!gl.getShaderParameter(s,gl.COMPILE_STATUS)){console.error('Shader error:',gl.getShaderInfoLog(s));return null;}
+    return s;
+}
+
+const vs=mkShader(gl.VERTEX_SHADER,document.getElementById('vs').text);
+const fs=mkShader(gl.FRAGMENT_SHADER,document.getElementById('fs').text);
+const prog=gl.createProgram();
+gl.attachShader(prog,vs);
+gl.attachShader(prog,fs);
+gl.linkProgram(prog);
+if(!gl.getProgramParameter(prog,gl.LINK_STATUS))console.error(gl.getProgramInfoLog(prog));
+gl.useProgram(prog);
+
+const buf=gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER,buf);
+gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([-1,-1,1,-1,-1,1,-1,1,1,-1,1,1]),gl.STATIC_DRAW);
+const aPos=gl.getAttribLocation(prog,'a_pos');
+gl.enableVertexAttribArray(aPos);
+gl.vertexAttribPointer(aPos,2,gl.FLOAT,false,0,0);
+
+// ── Uniforms ──
+const uniformNames=[
+    'u_res','u_time','u_mouse',
+    'u_mass','u_spin','u_glow','u_zoom','u_thick','u_temp','u_turb','u_incl',
+    'u_jets','u_bloom','u_neb','u_doppler','u_disk','u_lensing','u_stars',
+    'u_polar','u_redshift','u_ergo','u_isco_vis','u_hawking','u_photon_ring',
+    'u_milkyway','u_lensglow','u_stardens','u_galaxtilt',
+    'u_jetpow','u_helix',
+    'u_vign','u_grain','u_ca','u_gamma','u_expos','u_blooms','u_bloomr',
+    'u_orbit_mode','u_cine_time'
+];
+const U={};
+uniformNames.forEach(n=>U[n]=gl.getUniformLocation(prog,n));
+
+// ── State ──
+let mouseX=0,mouseY=0,isDragging=false,lastX=0,lastY=0;
+let targetMouseX=0,targetMouseY=0;
+let dprScale=1.5;
+let orbitMode=1; // 0=manual,1=auto-orbit,2=infall,3=photon,4=grand tour
+let cineStartTime=0;
+let tourStartTime=0;
+
+// Toggle states
+const toggles={
+    lensing:true, disk:true, doppler:true, photon:true,
+    stars:true, bloom:true, jets:true, neb:true,
+    milkyway:true, lensglow:true,
+    polar:false, redshift:false, ergo:false, isco:false,
+    hawking:false, physhud:false
+};
+
+// ── Slider elements ──
+const sliders={};
+['mass','spin','glow','zoom','thick','temp','turb','incl','jetpow','helix',
+ 'stardens','galaxtilt',
+ 'scale','bloomr','blooms','expos','vign','grain','ca','gamma'].forEach(id=>{
+    sliders[id]=document.getElementById(id);
+    if(sliders[id]) sliders[id].addEventListener('input',()=>{updateLabels(); markCustomPreset();});
+});
+
+function updateLabels(){
+    const v=k=>parseFloat(sliders[k].value);
+    const massDisplay = (v('mass')*20).toFixed(1); // display as solar masses
+    document.getElementById('v-mass').textContent = massDisplay;
+    document.getElementById('v-spin').textContent = v('spin').toFixed(3);
+    document.getElementById('v-glow').textContent = v('glow').toFixed(1);
+    document.getElementById('v-zoom').textContent = v('zoom').toFixed(1);
+    document.getElementById('v-thick').textContent = v('thick').toFixed(2);
+    document.getElementById('v-temp').textContent = v('temp').toFixed(2);
+    document.getElementById('v-turb').textContent = v('turb').toFixed(2);
+    document.getElementById('v-incl').textContent = Math.round(v('incl'))+'°';
+    document.getElementById('v-jetpow').textContent = v('jetpow').toFixed(2);
+    document.getElementById('v-helix').textContent = v('helix').toFixed(2);
+    document.getElementById('v-stardens').textContent = v('stardens').toFixed(2);
+    document.getElementById('v-galaxtilt').textContent = v('galaxtilt').toFixed(2);
+    document.getElementById('v-scale').textContent = Math.round(v('scale'))+'%';
+    document.getElementById('v-bloomr').textContent = v('bloomr').toFixed(1);
+    document.getElementById('v-blooms').textContent = v('blooms').toFixed(2);
+    document.getElementById('v-expos').textContent = v('expos').toFixed(2);
+    document.getElementById('v-vign').textContent = v('vign').toFixed(2);
+    document.getElementById('v-grain').textContent = v('grain').toFixed(2);
+    document.getElementById('v-ca').textContent = v('ca').toFixed(3);
+    document.getElementById('v-gamma').textContent = v('gamma').toFixed(2);
+
+    updatePhysicsHUD();
+}
+
+function updatePhysicsHUD(){
+    const mass=parseFloat(sliders.mass.value);
+    const spin=parseFloat(sliders.spin.value);
+    const a=spin*mass*0.5;
+    const rs=mass;
+
+    // Schwarzschild radius (display units)
+    document.getElementById('ph-rs').textContent = (mass*2).toFixed(2)+' Rg';
+
+    // ISCO — full Kerr formula
+    const aStar = a/rs;
+    const z1k = 1.0+Math.pow(1.0-aStar*aStar,1/3)*(Math.pow(1+aStar,1/3)+Math.pow(Math.max(0.001,1-aStar),1/3));
+    const z2k = Math.sqrt(3*aStar*aStar+z1k*z1k);
+    const riscoVal = (3.0+z2k-Math.sqrt(Math.max(0,(3-z1k)*(3+z1k+2*z2k))));
+    document.getElementById('ph-isco').textContent = riscoVal.toFixed(2);
+
+    // Ergosphere (equatorial)
+    const ergoVal = 1.0+Math.sqrt(Math.max(0,1-aStar*aStar));
+    document.getElementById('ph-ergo').textContent = ergoVal.toFixed(3);
+
+    // Hawking temperature (proportional to 1/M for Schwarzschild)
+    const hawkTemp = (1.227e-7 / (mass*20)).toExponential(1)+' K';
+    document.getElementById('ph-hawk').textContent = hawkTemp;
+
+    // Angular momentum J = a*M (dimensionless)
+    document.getElementById('ph-J').textContent = (spin).toFixed(3)+' M²';
+
+    // Photon sphere
+    const photonR = (1.5*(1+Math.sqrt(1-aStar*aStar))).toFixed(2);
+    document.getElementById('ph-photon').textContent = photonR;
+}
+
+// ── Presets ──
+const PRESETS={
+    m87:     {mass:0.85,spin:0.90,incl:17,glow:4.0,thick:0.08,temp:1.2,turb:0.7,jetpow:0.9,helix:0.7,zoom:6.0,stardens:0.5,galaxtilt:0.6},
+    sgra:    {mass:0.25,spin:0.50,incl:45,glow:2.0,thick:0.06,temp:0.8,turb:0.5,jetpow:0.1,helix:0.3,zoom:5.0,stardens:0.95,galaxtilt:0.15},
+    gargantua:{mass:0.50,spin:0.998,incl:82,glow:3.5,thick:0.12,temp:1.0,turb:0.6,jetpow:0.0,helix:0.5,zoom:5.0,stardens:0.8,galaxtilt:0.3},
+    schwarzschild:{mass:0.40,spin:0.0,incl:60,glow:3.0,thick:0.10,temp:1.0,turb:0.5,jetpow:0.3,helix:0.0,zoom:5.0,stardens:0.7,galaxtilt:0.4},
+    'kerr-ext':{mass:0.50,spin:0.998,incl:70,glow:4.5,thick:0.15,temp:1.3,turb:0.8,jetpow:0.8,helix:0.9,zoom:4.5,stardens:0.6,galaxtilt:0.5},
+    gw231123:{mass:1.2,spin:0.85,incl:40,glow:5.0,thick:0.20,temp:1.5,turb:0.9,jetpow:0.7,helix:0.6,zoom:4.0,stardens:0.4,galaxtilt:0.7},
+    oj287:   {mass:1.0,spin:0.70,incl:30,glow:6.0,thick:0.10,temp:1.4,turb:0.8,jetpow:1.0,helix:0.8,zoom:7.0,stardens:0.5,galaxtilt:0.45},
+    cygx1:   {mass:0.15,spin:0.95,incl:27,glow:5.0,thick:0.05,temp:1.6,turb:0.7,jetpow:0.4,helix:0.5,zoom:4.0,stardens:0.85,galaxtilt:0.2}
+};
+
+function applyPreset(name){
+    const p=PRESETS[name];
+    if(!p)return;
+    Object.keys(p).forEach(k=>{
+        if(sliders[k]) sliders[k].value=p[k];
+    });
+    // For Gargantua, disable jets visually
+    if(name==='gargantua'){
+        setToggle('jets',false);
+        setToggle('milkyway',true);
+    } else if(name==='m87'||name==='oj287'){
+        setToggle('jets',true);
+        setToggle('milkyway',true);
+    } else if(name==='sgra'){
+        // Sgr A* sits at the center of the Milky Way — dense star field
+        setToggle('jets',false);
+        setToggle('milkyway',true);
+        setToggle('lensglow',true);
+    }
+    updateLabels();
+}
+
+function markCustomPreset(){
+    document.getElementById('preset-select').value='custom';
+}
+
+document.getElementById('preset-select').addEventListener('change',e=>{
+    if(e.target.value!=='custom') applyPreset(e.target.value);
+});
+
+// ── Tabs ──
+document.querySelectorAll('.tab').forEach(tab=>{
+    tab.addEventListener('click',()=>{
+        document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+        document.querySelectorAll('.tab-content').forEach(t=>t.classList.remove('active'));
+        tab.classList.add('active');
+        document.getElementById('tab-'+tab.dataset.tab).classList.add('active');
+    });
+});
+
+// ── Toggles ──
+function setToggle(name,state){
+    const el=document.getElementById('t-'+name);
+    if(!el)return;
+    toggles[name]=state;
+    el.dataset.on=String(state);
+    if(state) el.classList.add('on'); else el.classList.remove('on');
+}
+
+const toggleMap={
+    't-lensing':'lensing','t-disk':'disk','t-doppler':'doppler','t-photon':'photon',
+    't-stars':'stars','t-bloom':'bloom','t-jets':'jets','t-neb':'neb',
+    't-milkyway':'milkyway','t-lensglow':'lensglow',
+    't-polar':'polar','t-redshift':'redshift','t-ergo':'ergo','t-isco':'isco',
+    't-hawking':'hawking','t-physhud':'physhud'
+};
+
+document.querySelectorAll('.tg').forEach(el=>{
+    el.addEventListener('click',()=>{
+        const key=toggleMap[el.id];
+        if(!key)return;
+        const on=el.dataset.on==='true';
+        setToggle(key,!on);
+        if(key==='physhud'){
+            document.getElementById('physics-hud').classList.toggle('visible',!on);
+        }
+    });
+});
+
+// ── Performance buttons ──
+document.querySelectorAll('.perf-btn').forEach(btn=>{
+    btn.addEventListener('click',()=>{
+        document.querySelectorAll('.perf-btn').forEach(b=>b.classList.remove('active'));
+        btn.classList.add('active');
+        dprScale=parseFloat(btn.dataset.perf);
+        resize();
+    });
+});
+
+// ── Cinematic buttons ──
+document.getElementById('cine-orbit').addEventListener('click',()=>{setCineMode(1);});
+document.getElementById('cine-infall').addEventListener('click',()=>{setCineMode(2);});
+document.getElementById('cine-photon').addEventListener('click',()=>{setCineMode(3);});
+document.getElementById('cine-grand').addEventListener('click',()=>{setCineMode(4);});
+document.getElementById('cine-stop').addEventListener('click',()=>{setCineMode(0);});
+
+const CINE_IDS={
+    0:'cine-stop',
+    1:'cine-orbit',
+    2:'cine-infall',
+    3:'cine-photon',
+    4:'cine-grand'
+};
+
+function setCineMode(mode){
+    orbitMode=mode;
+    cineStartTime=performance.now()*0.001;
+    if(mode===4) tourStartTime=cineStartTime;
+    document.querySelectorAll('.cine-btn').forEach(b=>b.classList.remove('active'));
+    const id=CINE_IDS[mode]||'cine-stop';
+    const el=document.getElementById(id);
+    if(el) el.classList.add('active');
+}
+setCineMode(1); // default auto-orbit
+
+// ── Panel toggle ──
+const panel=document.getElementById('panel');
+const toggleBtn=document.getElementById('toggle-btn');
+const hud=document.getElementById('hud');
+let panelVisible=true;
+
+toggleBtn.addEventListener('click',()=>{
+    panelVisible=!panelVisible;
+    panel.classList.toggle('hidden');
+    hud.classList.toggle('shifted');
+});
+
+// ── Tooltips ──
+const tooltip=document.getElementById('tooltip');
+document.querySelectorAll('.info-tip').forEach(el=>{
+    el.addEventListener('mouseenter',e=>{
+        tooltip.textContent=el.dataset.tip;
+        tooltip.style.left=(e.clientX-210)+'px';
+        tooltip.style.top=(e.clientY+15)+'px';
+        tooltip.classList.add('show');
+    });
+    el.addEventListener('mouseleave',()=>tooltip.classList.remove('show'));
+});
+
+// ── Keyboard shortcuts ──
+document.addEventListener('keydown',e=>{
+    const k=e.key.toLowerCase();
+    if(k==='h'){panelVisible=!panelVisible;panel.classList.toggle('hidden');hud.classList.toggle('shifted');toggleBtn.style.opacity=panelVisible?'1':'0';}
+    if(k==='i'){setToggle('physhud',!toggles.physhud);document.getElementById('physics-hud').classList.toggle('visible',toggles.physhud);}
+    if(k==='p'){setToggle('polar',!toggles.polar);}
+    if(k==='r'){setToggle('redshift',!toggles.redshift);}
+    if(k==='e'){setToggle('ergo',!toggles.ergo);}
+    if(k==='j'){setToggle('jets',!toggles.jets);}
+    if(k==='m'){setToggle('milkyway',!toggles.milkyway);}
+    if(k==='1'){setCineMode(0);}
+    if(k==='2'){setCineMode(1);}
+    if(k==='3'){setCineMode(2);}
+    if(k==='4'){setCineMode(3);}
+    if(k==='5'){setCineMode(4);}
+});
+
+// ── Mouse / Touch ──
+canvas.addEventListener('mousedown',e=>{isDragging=true;lastX=e.clientX;lastY=e.clientY;if(orbitMode!==0)setCineMode(0);});
+window.addEventListener('mouseup',()=>isDragging=false);
+window.addEventListener('mousemove',e=>{
+    if(isDragging){targetMouseX+=e.clientX-lastX;targetMouseY+=e.clientY-lastY;lastX=e.clientX;lastY=e.clientY;}
+});
+
+canvas.addEventListener('touchstart',e=>{isDragging=true;lastX=e.touches[0].clientX;lastY=e.touches[0].clientY;},{passive:true});
+window.addEventListener('touchend',()=>isDragging=false);
+window.addEventListener('touchmove',e=>{
+    if(isDragging){targetMouseX+=(e.touches[0].clientX-lastX)*1.5;targetMouseY+=(e.touches[0].clientY-lastY)*1.5;lastX=e.touches[0].clientX;lastY=e.touches[0].clientY;}
+},{passive:true});
+
+canvas.addEventListener('wheel',e=>{
+    e.preventDefault();
+    sliders.zoom.value=Math.max(parseFloat(sliders.zoom.min),Math.min(parseFloat(sliders.zoom.max),parseFloat(sliders.zoom.value)+e.deltaY*0.004));
+    updateLabels();
+},{passive:false});
+
+canvas.addEventListener('dblclick',()=>{
+    targetMouseX=window.innerWidth*0.5;
+    targetMouseY=window.innerHeight*0.42;
+    sliders.zoom.value='5.0';
+    updateLabels();
+});
+
+// ── Screenshot ──
+document.getElementById('btn-screenshot').addEventListener('click',()=>{
+    // Render one frame with preserveDrawingBuffer
+    const link=document.createElement('a');
+    link.download='event_horizon_'+Date.now()+'.png';
+    link.href=canvas.toDataURL('image/png');
+    link.click();
+});
+
+// ── Resize ──
+function resize(){
+    const scale = parseFloat(sliders.scale.value)/100;
+    const dpr = Math.min(window.devicePixelRatio, dprScale) * scale;
+    canvas.width = window.innerWidth * dpr;
+    canvas.height = window.innerHeight * dpr;
+    gl.viewport(0, 0, canvas.width, canvas.height);
+}
+window.addEventListener('resize',resize);
+resize();
+
+targetMouseX=window.innerWidth*0.5;
+targetMouseY=window.innerHeight*0.42;
+mouseX=targetMouseX;
+mouseY=targetMouseY;
+
+// ── Init ──
+updateLabels();
+applyPreset('gargantua');
+// Set Gargantua jets off by default
+setToggle('jets', false);
+updateLabels();
+
+// ── Render loop ──
+let frameCount=0, lastFpsTime=0;
+const hudFps=document.getElementById('hud-fps');
+const hudRs=document.getElementById('hud-rs');
+const hudZ=document.getElementById('hud-z');
+const hudTau=document.getElementById('hud-tau');
+
+function render(time){
+    time *= 0.001;
+
+    mouseX += (targetMouseX-mouseX)*0.08;
+    mouseY += (targetMouseY-mouseY)*0.08;
+
+    // FPS counter
+    frameCount++;
+    if(time-lastFpsTime >= 1.0){
+        hudFps.textContent=frameCount;
+        frameCount=0;
+        lastFpsTime=time;
+    }
+
+    // HUD values
+    const mass=parseFloat(sliders.mass.value);
+    const spin=parseFloat(sliders.spin.value);
+    const zoom=parseFloat(sliders.zoom.value);
+    hudRs.textContent=(mass*2).toFixed(2);
+    // Gravitational redshift at observer distance
+    const zGrav = 1/Math.sqrt(Math.max(0.01,1-mass/zoom))-1;
+    hudZ.textContent = zGrav.toFixed(3);
+    // Time dilation
+    const tau = Math.sqrt(Math.max(0.01,1-mass/zoom));
+    hudTau.textContent = tau.toFixed(3);
+
+    // Cinematic time
+    let cineModeForShader = orbitMode;
+    let cineT = time - cineStartTime;
+    if(orbitMode === 4){
+        const t = time - tourStartTime;
+        if(t < 16.0){
+            cineModeForShader = 1;
+            cineT = t;
+        } else if(t < 32.0){
+            cineModeForShader = 2;
+            cineT = t - 16.0;
+        } else if(t < 48.0){
+            cineModeForShader = 3;
+            cineT = t - 32.0;
+        } else {
+            cineModeForShader = 1;
+            cineT = t - 48.0;
+        }
+    }
+
+    // Set all uniforms
+    gl.uniform2f(U.u_res, canvas.width, canvas.height);
+    gl.uniform1f(U.u_time, time);
+    gl.uniform2f(U.u_mouse, mouseX, mouseY);
+    gl.uniform1f(U.u_mass, mass);
+    gl.uniform1f(U.u_spin, spin);
+    gl.uniform1f(U.u_glow, parseFloat(sliders.glow.value));
+    gl.uniform1f(U.u_zoom, zoom);
+    gl.uniform1f(U.u_thick, parseFloat(sliders.thick.value));
+    gl.uniform1f(U.u_temp, parseFloat(sliders.temp.value));
+    gl.uniform1f(U.u_turb, parseFloat(sliders.turb.value));
+    gl.uniform1f(U.u_incl, parseFloat(sliders.incl.value));
+    gl.uniform1f(U.u_jetpow, parseFloat(sliders.jetpow.value));
+    gl.uniform1f(U.u_helix, parseFloat(sliders.helix.value));
+
+    // Toggles
+    gl.uniform1f(U.u_lensing, toggles.lensing?1:0);
+    gl.uniform1f(U.u_disk, toggles.disk?1:0);
+    gl.uniform1f(U.u_doppler, toggles.doppler?1:0);
+    gl.uniform1f(U.u_photon_ring, toggles.photon?1:0);
+    gl.uniform1f(U.u_stars, toggles.stars?1:0);
+    gl.uniform1f(U.u_bloom, toggles.bloom?1:0);
+    gl.uniform1f(U.u_jets, toggles.jets?1:0);
+    gl.uniform1f(U.u_neb, toggles.neb?1:0);
+    gl.uniform1f(U.u_milkyway, toggles.milkyway?1:0);
+    gl.uniform1f(U.u_lensglow, toggles.lensglow?1:0);
+    gl.uniform1f(U.u_stardens, parseFloat(sliders.stardens.value));
+    gl.uniform1f(U.u_galaxtilt, parseFloat(sliders.galaxtilt.value));
+    gl.uniform1f(U.u_polar, toggles.polar?1:0);
+    gl.uniform1f(U.u_redshift, toggles.redshift?1:0);
+    gl.uniform1f(U.u_ergo, toggles.ergo?1:0);
+    gl.uniform1f(U.u_isco_vis, toggles.isco?1:0);
+    gl.uniform1f(U.u_hawking, toggles.hawking?1:0);
+
+    // System
+    gl.uniform1f(U.u_vign, parseFloat(sliders.vign.value));
+    gl.uniform1f(U.u_grain, parseFloat(sliders.grain.value));
+    gl.uniform1f(U.u_ca, parseFloat(sliders.ca.value));
+    gl.uniform1f(U.u_gamma, parseFloat(sliders.gamma.value));
+    gl.uniform1f(U.u_expos, parseFloat(sliders.expos.value));
+    gl.uniform1f(U.u_blooms, parseFloat(sliders.blooms.value));
+    gl.uniform1f(U.u_bloomr, parseFloat(sliders.bloomr.value));
+
+    // Cinematic
+    gl.uniform1f(U.u_orbit_mode, cineModeForShader);
+    gl.uniform1f(U.u_cine_time, cineT);
+
+    gl.drawArrays(gl.TRIANGLES, 0, 6);
+    requestAnimationFrame(render);
+}
+requestAnimationFrame(render);
+</script>
+</body>
+</html>

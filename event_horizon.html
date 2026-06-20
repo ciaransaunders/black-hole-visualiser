@@ -1,0 +1,493 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Event Horizon — Kerr Black Hole Simulator</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@200;300;400;500;600&display=swap');
+*{margin:0;padding:0;box-sizing:border-box}
+body{overflow:hidden;background:#000;font-family:'Inter',sans-serif;color:#fff;cursor:crosshair}
+canvas{display:block;position:fixed;top:0;left:0;width:100vw;height:100vh}
+#panel{position:fixed;top:20px;right:20px;width:260px;background:rgba(4,4,12,0.65);border:1px solid rgba(255,140,60,0.08);border-radius:20px;padding:24px 20px 18px;backdrop-filter:blur(24px);-webkit-backdrop-filter:blur(24px);z-index:10;transition:opacity 0.5s,transform 0.5s;box-shadow:0 8px 32px rgba(0,0,0,0.8),inset 0 1px 0 rgba(255,255,255,0.03)}
+#panel.hidden{opacity:0;pointer-events:none;transform:translateX(20px)}
+.title{font-size:10px;font-weight:600;letter-spacing:5px;text-transform:uppercase;background:linear-gradient(90deg,#ff9a5c,#ff6b3d);-webkit-background-clip:text;-webkit-text-fill-color:transparent;margin-bottom:4px}
+.sub{font-size:9px;font-weight:200;letter-spacing:2px;color:rgba(255,255,255,0.2);margin-bottom:18px}
+.ctrl{margin-bottom:12px}
+.cl{display:flex;justify-content:space-between;align-items:center;font-size:9px;font-weight:300;letter-spacing:1.8px;text-transform:uppercase;color:rgba(255,255,255,0.4);margin-bottom:6px}
+.cl span{font-weight:500;color:rgba(255,180,120,0.65);font-variant-numeric:tabular-nums}
+input[type="range"]{width:100%;-webkit-appearance:none;appearance:none;background:rgba(255,255,255,0.05);height:2px;border-radius:1px;outline:none}
+input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;width:10px;height:10px;background:rgba(255,160,100,0.85);border-radius:50%;cursor:pointer;box-shadow:0 0 10px rgba(255,120,60,0.3);transition:transform 0.15s,box-shadow 0.15s}
+input[type="range"]::-webkit-slider-thumb:hover{transform:scale(1.5);box-shadow:0 0 18px rgba(255,120,60,0.5)}
+.sep{height:1px;background:rgba(255,255,255,0.04);margin:14px 0}
+.tr{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+.tr label{font-size:9px;font-weight:300;letter-spacing:1.5px;text-transform:uppercase;color:rgba(255,255,255,0.4);cursor:pointer}
+.tg{position:relative;width:30px;height:15px;background:rgba(255,255,255,0.06);border-radius:8px;cursor:pointer;transition:background 0.25s}
+.tg.on{background:rgba(255,140,60,0.35)}
+.tg::after{content:'';position:absolute;top:2px;left:2px;width:11px;height:11px;background:rgba(255,255,255,0.4);border-radius:50%;transition:transform 0.25s,background 0.25s}
+.tg.on::after{transform:translateX(15px);background:rgba(255,190,140,0.9)}
+.hint{font-size:8px;font-weight:200;color:rgba(255,255,255,0.15);text-align:center;margin-top:12px;letter-spacing:0.5px;line-height:1.7}
+#info{position:fixed;bottom:16px;left:16px;font-size:9px;font-weight:200;color:rgba(255,255,255,0.12);letter-spacing:1px;z-index:10}
+#toggle-btn{position:fixed;top:24px;right:292px;width:26px;height:26px;background:rgba(0,0,0,0.3);border:1px solid rgba(255,255,255,0.05);border-radius:8px;color:rgba(255,255,255,0.2);font-size:12px;cursor:pointer;display:flex;align-items:center;justify-content:center;z-index:11;transition:all 0.3s;font-family:'Inter',sans-serif}
+#toggle-btn:hover{background:rgba(255,140,60,0.08);border-color:rgba(255,140,60,0.15);color:rgba(255,180,130,0.6)}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<canvas id="bloom-canvas" style="display:none"></canvas>
+<button id="toggle-btn" title="Toggle panel">⚙</button>
+<div id="panel">
+<div class="title">Event Horizon</div>
+<div class="sub">Kerr Metric Simulation</div>
+<div class="ctrl"><div class="cl">Mass <span id="v-mass">0.50</span></div><input type="range" id="mass" min="0.12" max="1.2" step="0.01" value="0.50"></div>
+<div class="ctrl"><div class="cl">Spin <span id="v-spin">0.65</span></div><input type="range" id="spin" min="0.0" max="0.99" step="0.01" value="0.65"></div>
+<div class="ctrl"><div class="cl">Luminosity <span id="v-glow">3.5</span></div><input type="range" id="glow" min="0.0" max="10.0" step="0.1" value="3.5"></div>
+<div class="ctrl"><div class="cl">Zoom <span id="v-zoom">5.0</span></div><input type="range" id="zoom" min="1.8" max="16.0" step="0.1" value="5.0"></div>
+<div class="ctrl"><div class="cl">Disk Height <span id="v-thick">0.12</span></div><input type="range" id="thick" min="0.02" max="0.5" step="0.01" value="0.12"></div>
+<div class="ctrl"><div class="cl">Temperature <span id="v-temp">1.00</span></div><input type="range" id="temp" min="0.3" max="2.0" step="0.01" value="1.00"></div>
+<div class="sep"></div>
+<div class="tr"><label>Auto-Orbit</label><div class="tg on" id="t-orbit" data-on="true"></div></div>
+<div class="tr"><label>Polar Jets</label><div class="tg on" id="t-jets" data-on="true"></div></div>
+<div class="tr"><label>Bloom</label><div class="tg on" id="t-bloom" data-on="true"></div></div>
+<div class="tr"><label>Nebula</label><div class="tg on" id="t-neb" data-on="true"></div></div>
+<div class="tr"><label>Doppler Shift</label><div class="tg on" id="t-doppler" data-on="true"></div></div>
+<div class="hint">Drag to orbit · Scroll to zoom · H to hide UI<br>Double-click to reset view</div>
+</div>
+<div id="info"></div>
+
+<script id="vs" type="x-shader/x-vertex">
+attribute vec2 a_pos;
+void main(){gl_Position=vec4(a_pos,0.0,1.0);}
+</script>
+
+<script id="fs" type="x-shader/x-fragment">
+precision highp float;
+
+uniform vec2 u_res;
+uniform float u_time;
+uniform vec2 u_mouse;
+uniform float u_mass, u_spin, u_glow, u_zoom, u_thick, u_temp;
+uniform float u_orbit, u_jets, u_bloom, u_neb, u_doppler;
+
+#define PI 3.14159265
+#define TAU 6.28318530
+#define STEPS 200
+#define ESC 35.0
+
+mat2 rot(float a){float s=sin(a),c=cos(a);return mat2(c,-s,s,c);}
+
+float hash31(vec3 p){p=fract(p*vec3(443.897,441.423,437.195));p+=dot(p,p.yzx+19.19);return fract((p.x+p.y)*p.z);}
+float hash21(vec2 p){vec3 p3=fract(vec3(p.xyx)*vec3(.1031,.103,.0973));p3+=dot(p3,p3.yzx+33.33);return fract((p3.x+p3.y)*p3.z);}
+
+float noise(vec2 p){
+    vec2 i=floor(p),f=fract(p);
+    vec2 u=f*f*f*(f*(f*6.0-15.0)+10.0);
+    float a=hash21(i),b=hash21(i+vec2(1,0)),c=hash21(i+vec2(0,1)),d=hash21(i+vec2(1,1));
+    return mix(mix(a,b,u.x),mix(c,d,u.x),u.y);
+}
+
+float fbm(vec2 p){
+    float v=0.0,a=0.5;
+    mat2 m=mat2(0.8,0.6,-0.6,0.8);
+    for(int i=0;i<6;i++){v+=a*noise(p);p=m*p*2.03;a*=0.47;}
+    return v;
+}
+
+float fbm3(vec2 p){
+    float v=0.0,a=0.5;
+    mat2 m=mat2(0.866,0.5,-0.5,0.866);
+    for(int i=0;i<4;i++){v+=a*noise(p);p=m*p*2.1;a*=0.45;}
+    return v;
+}
+
+vec3 aces(vec3 x){
+    float a=2.51,b=0.03,c=2.43,d=0.59,e=0.14;
+    return clamp((x*(a*x+b))/(x*(c*x+d)+e),0.0,1.0);
+}
+
+float starField(vec3 rd){
+    vec3 cell=floor(rd*500.0);
+    float h=hash31(cell);
+    float b=step(0.9965,h)*pow(h,350.0)*1.5;
+    b+=step(0.9992,h)*0.6;
+    // Twinkle
+    b*=0.7+0.3*sin(u_time*3.0+h*100.0);
+    return b;
+}
+
+vec3 nebula(vec3 rd){
+    vec2 uv=vec2(atan(rd.z,rd.x),asin(clamp(rd.y,-1.0,1.0)));
+    float n1=fbm3(uv*1.8+0.5);
+    float n2=fbm3(uv*3.5-2.1);
+    float n3=fbm3(uv*2.2+vec2(3.7,-1.3));
+    vec3 col=vec3(0.0);
+    col+=vec3(0.10,0.02,0.08)*smoothstep(0.3,0.75,n1);
+    col+=vec3(0.02,0.04,0.12)*smoothstep(0.35,0.8,n2);
+    col+=vec3(0.06,0.01,0.03)*smoothstep(0.4,0.85,n3);
+    col*=0.35;
+    return col;
+}
+
+// Blackbody approximation
+vec3 blackbody(float t){
+    t*=u_temp;
+    vec3 c;
+    c.r=1.0/(exp(4800.0/(t*4000.0+1000.0))-1.0);
+    c.g=1.0/(exp(4800.0/(t*3200.0+800.0))-1.0);
+    c.b=1.0/(exp(4800.0/(t*2400.0+600.0))-1.0);
+    return clamp(c/max(c.r,max(c.g,c.b)+0.001),0.0,1.0);
+}
+
+void main(){
+    vec2 uv=(gl_FragCoord.xy-0.5*u_res.xy)/u_res.y;
+
+    float camDist=u_zoom;
+    float orbitSpeed=u_orbit*u_time*0.06;
+    float angleY=(u_mouse.x/u_res.x)*TAU+PI+orbitSpeed;
+    float angleX=((u_mouse.y/u_res.y)-0.5)*2.8;
+
+    vec3 ro=vec3(0.0,0.0,-camDist);
+    ro.yz*=rot(angleX);
+    ro.xz*=rot(angleY);
+
+    vec3 fwd=normalize(-ro);
+    vec3 right=normalize(cross(vec3(0,1,0),fwd));
+    vec3 up=cross(fwd,right);
+    vec3 rd=normalize(fwd+uv.x*right+uv.y*up);
+
+    float rs=u_mass;
+    float a=u_spin*rs*0.5;
+    float risco=rs*(3.0+sqrt(max(0.0,9.0-8.0*a/rs)));
+    float accInner=max(rs*1.35,risco*0.45);
+    float accOuter=rs*9.0;
+    float diskH=u_thick;
+
+    vec3 col=vec3(0.0);
+    vec3 p=ro,dir=rd;
+    float minDist=100.0;
+    bool fellIn=false;
+    float totalDiskLight=0.0;
+
+    for(int i=0;i<STEPS;i++){
+        vec3 toC=-p;
+        float d=length(p);
+        minDist=min(minDist,d);
+
+        float step_=max(0.01,d*0.032);
+
+        // Gravitational force with Kerr spin
+        float fMag=(rs*2.2)/(d*d+0.04);
+        vec3 force=normalize(toC)*fMag;
+
+        // Frame-dragging
+        vec3 tang=normalize(cross(vec3(0,1,0),toC));
+        float fd=a*2.5/(d*d*d+0.3);
+        force+=tang*fd;
+
+        dir=normalize(dir+force*step_*0.5);
+        vec3 prevP=p;
+        p+=dir*step_;
+
+        if(d<rs*0.92){fellIn=true;break;}
+
+        // Volumetric accretion disk
+        if(prevP.y*p.y<0.0||abs(p.y)<diskH){
+            float t=clamp(-prevP.y/(p.y-prevP.y+0.0001),0.0,1.0);
+            vec3 isect=prevP+(p-prevP)*t;
+            float r=length(isect.xz);
+
+            if(r>accInner&&r<accOuter&&r>rs*1.02){
+                float angle=atan(isect.z,isect.x);
+                float aN=angle/TAU+0.5;
+
+                float orbSpd=3.5/(r*r+0.08)+fd*0.4;
+
+                // Rich turbulence
+                float n1=fbm(vec2(r*4.0,aN*14.0+u_time*orbSpd));
+                float n2=fbm(vec2(r*8.0,aN*28.0+u_time*orbSpd*1.4));
+                float n3=fbm(vec2(r*2.0-u_time*0.3,aN*6.0+u_time*orbSpd*0.7));
+                float turb=mix(mix(n1,n2,0.35),n3,0.2);
+
+                // Spiral arms
+                float spiral=0.5+0.5*sin(r*8.0-angle*4.0-u_time*orbSpd*2.5);
+                turb=mix(turb,spiral,0.18);
+
+                // Ring structure
+                float rings=0.5+0.5*sin(r*25.0-u_time*orbSpd*1.2);
+                turb=mix(turb,rings,0.12);
+
+                // Hot filaments
+                float fil=pow(fbm(vec2(r*12.0+u_time*0.5,aN*40.0)),2.0);
+                turb+=fil*0.15;
+
+                float temp=pow(accInner/r,1.15);
+                vec3 diskCol=blackbody(temp);
+
+                // Edge fading
+                float innerFade=smoothstep(accInner,accInner+0.18,r);
+                float outerFade=smoothstep(accOuter,accOuter-1.5,r);
+                float horizFade=smoothstep(rs*1.02,rs*1.7,r);
+                float edge=innerFade*outerFade*horizFade;
+
+                // Vertical density
+                float vertFade=exp(-abs(isect.y)/(diskH*0.7+0.005));
+
+                // Doppler beaming
+                vec3 vel=normalize(vec3(-isect.z,0.0,isect.x));
+                float doppler=dot(vel,normalize(ro-isect));
+                float beam=pow(0.5+0.5*doppler,3.5)*2.8;
+
+                // Doppler color shift
+                if(u_doppler>0.5){
+                    vec3 blueShift=vec3(0.75,0.88,1.3);
+                    vec3 redShift=vec3(1.3,0.82,0.65);
+                    diskCol*=mix(redShift,blueShift,0.5+0.5*doppler);
+                }
+
+                float brightness=(0.1+0.9*turb)*edge*vertFade*beam*temp;
+                vec3 contrib=diskCol*brightness*u_glow*0.32;
+                col+=contrib;
+                totalDiskLight+=brightness;
+            }
+        }
+
+        // Polar jets
+        if(u_jets>0.5){
+            float cylR=length(p.xz);
+            float jetH=abs(p.y);
+            float jetW=0.06+jetH*0.035;
+            if(cylR<jetW&&jetH>rs*1.8&&jetH<rs*18.0){
+                float jd=exp(-cylR/(jetW*0.45));
+                float jf=exp(-jetH/(rs*7.0));
+                float jt=noise(vec2(jetH*6.0,u_time*2.5+cylR*12.0));
+                float jt2=noise(vec2(jetH*3.0-u_time*1.5,cylR*8.0));
+                jt=mix(jt,jt2,0.4);
+                vec3 jc=mix(vec3(0.25,0.45,1.0),vec3(0.7,0.85,1.0),jt);
+                // Add purple tint at base
+                float baseFade=smoothstep(rs*1.8,rs*4.0,jetH);
+                jc=mix(vec3(0.5,0.2,0.8),jc,baseFade);
+                col+=jc*jd*jf*jt*u_glow*0.12;
+            }
+        }
+
+        if(d>ESC){
+            float stars=starField(dir);
+            col+=vec3(stars);
+            // Colored stars
+            float hue=hash31(floor(dir*500.0)+0.5);
+            vec3 starCol=mix(vec3(1.0),mix(vec3(1.0,0.8,0.6),vec3(0.7,0.85,1.0),hue),0.3);
+            col*=starCol;
+            if(u_neb>0.5) col+=nebula(dir);
+            break;
+        }
+    }
+
+    // Photon ring - primary
+    if(!fellIn){
+        float photonR=rs*1.5;
+        float gw=rs*0.10;
+        float glow=exp(-pow((minDist-photonR)/gw,2.0));
+        glow*=smoothstep(0.003,0.035,glow);
+        vec3 ringCol=mix(vec3(1.0,0.82,0.6),vec3(1.0,0.95,0.9),glow);
+        col+=ringCol*glow*u_glow*0.75;
+
+        // Secondary photon ring
+        float gw2=rs*0.03;
+        float glow2=exp(-pow((minDist-photonR*0.97)/gw2,2.0));
+        col+=vec3(1.0,0.88,0.75)*glow2*u_glow*0.25;
+
+        // Tertiary ring (faint)
+        float gw3=rs*0.015;
+        float glow3=exp(-pow((minDist-photonR*0.95)/gw3,2.0));
+        col+=vec3(1.0,0.92,0.82)*glow3*u_glow*0.08;
+    }
+
+    // Bloom approximation
+    if(u_bloom>0.5){
+        float lum=dot(col,vec3(0.2126,0.7152,0.0722));
+        float bloomAmt=max(0.0,lum-0.6);
+        col+=col*bloomAmt*0.45;
+        // Wide soft glow around the disk
+        float diskGlow=totalDiskLight*0.008;
+        col+=vec3(1.0,0.7,0.4)*diskGlow;
+    }
+
+    // Post-processing
+    col=aces(col*1.15);
+    col=pow(col,vec3(1.0/2.2));
+
+    // Vignette
+    vec2 vig=gl_FragCoord.xy/u_res-0.5;
+    col*=1.0-dot(vig,vig)*0.35;
+
+    // Chromatic aberration at edges
+    float dist=length(vig);
+    float ca=dist*dist*0.008;
+    col.r*=1.0+ca;
+    col.b*=1.0-ca;
+
+    // Dither
+    float dither=hash21(gl_FragCoord.xy+fract(u_time))-0.5;
+    col+=dither*(1.5/255.0);
+
+    gl_FragColor=vec4(col,1.0);
+}
+</script>
+
+<script>
+const canvas=document.getElementById('c');
+const gl=canvas.getContext('webgl',{antialias:false,preserveDrawingBuffer:false});
+if(!gl)alert('WebGL not supported');
+
+function mkShader(type,src){
+    const s=gl.createShader(type);
+    gl.shaderSource(s,src);
+    gl.compileShader(s);
+    if(!gl.getShaderParameter(s,gl.COMPILE_STATUS)){console.error(gl.getShaderInfoLog(s));return null;}
+    return s;
+}
+
+const vs=mkShader(gl.VERTEX_SHADER,document.getElementById('vs').text);
+const fs=mkShader(gl.FRAGMENT_SHADER,document.getElementById('fs').text);
+const prog=gl.createProgram();
+gl.attachShader(prog,vs);
+gl.attachShader(prog,fs);
+gl.linkProgram(prog);
+if(!gl.getProgramParameter(prog,gl.LINK_STATUS))console.error(gl.getProgramInfoLog(prog));
+gl.useProgram(prog);
+
+const buf=gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER,buf);
+gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([-1,-1,1,-1,-1,1,-1,1,1,-1,1,1]),gl.STATIC_DRAW);
+const aPos=gl.getAttribLocation(prog,'a_pos');
+gl.enableVertexAttribArray(aPos);
+gl.vertexAttribPointer(aPos,2,gl.FLOAT,false,0,0);
+
+const U={};
+['u_res','u_time','u_mouse','u_mass','u_spin','u_glow','u_zoom','u_thick','u_temp','u_orbit','u_jets','u_bloom','u_neb','u_doppler']
+    .forEach(n=>U[n]=gl.getUniformLocation(prog,n));
+
+let mouseX=0,mouseY=0,isDragging=false,lastX=0,lastY=0;
+let targetMouseX=0,targetMouseY=0;
+
+const els={};
+['mass','spin','glow','zoom','thick','temp'].forEach(id=>{
+    els[id]=document.getElementById(id);
+    els[id].addEventListener('input',updateLabels);
+});
+
+function updateLabels(){
+    document.getElementById('v-mass').textContent=parseFloat(els.mass.value).toFixed(2);
+    document.getElementById('v-spin').textContent=parseFloat(els.spin.value).toFixed(2);
+    document.getElementById('v-glow').textContent=parseFloat(els.glow.value).toFixed(1);
+    document.getElementById('v-zoom').textContent=parseFloat(els.zoom.value).toFixed(1);
+    document.getElementById('v-thick').textContent=parseFloat(els.thick.value).toFixed(2);
+    document.getElementById('v-temp').textContent=parseFloat(els.temp.value).toFixed(2);
+}
+
+let autoOrbit=true,showJets=true,showBloom=true,showNeb=true,showDoppler=true;
+
+document.querySelectorAll('.tg').forEach(el=>{
+    el.addEventListener('click',()=>{
+        const on=el.dataset.on==='true';
+        el.dataset.on=String(!on);
+        el.classList.toggle('on');
+        if(el.id==='t-orbit')autoOrbit=!on;
+        if(el.id==='t-jets')showJets=!on;
+        if(el.id==='t-bloom')showBloom=!on;
+        if(el.id==='t-neb')showNeb=!on;
+        if(el.id==='t-doppler')showDoppler=!on;
+    });
+});
+
+const panel=document.getElementById('panel');
+const toggleBtn=document.getElementById('toggle-btn');
+let panelVisible=true;
+
+toggleBtn.addEventListener('click',()=>{panelVisible=!panelVisible;panel.classList.toggle('hidden');});
+document.addEventListener('keydown',e=>{
+    if(e.key==='h'||e.key==='H'){panelVisible=!panelVisible;panel.classList.toggle('hidden');toggleBtn.style.opacity=panelVisible?'1':'0';}
+});
+
+// Mouse / Touch with smooth interpolation
+canvas.addEventListener('mousedown',e=>{isDragging=true;lastX=e.clientX;lastY=e.clientY;});
+window.addEventListener('mouseup',()=>isDragging=false);
+window.addEventListener('mousemove',e=>{
+    if(isDragging){targetMouseX+=e.clientX-lastX;targetMouseY+=e.clientY-lastY;lastX=e.clientX;lastY=e.clientY;}
+});
+
+canvas.addEventListener('touchstart',e=>{isDragging=true;lastX=e.touches[0].clientX;lastY=e.touches[0].clientY;},{passive:true});
+window.addEventListener('touchend',()=>isDragging=false);
+window.addEventListener('touchmove',e=>{
+    if(isDragging){targetMouseX+=(e.touches[0].clientX-lastX)*1.5;targetMouseY+=(e.touches[0].clientY-lastY)*1.5;lastX=e.touches[0].clientX;lastY=e.touches[0].clientY;}
+},{passive:true});
+
+// Scroll zoom with smooth animation
+canvas.addEventListener('wheel',e=>{
+    e.preventDefault();
+    const z=els.zoom;
+    z.value=Math.max(parseFloat(z.min),Math.min(parseFloat(z.max),parseFloat(z.value)+e.deltaY*0.004));
+    updateLabels();
+},{passive:false});
+
+// Double-click to reset
+canvas.addEventListener('dblclick',()=>{
+    targetMouseX=window.innerWidth*0.5;
+    targetMouseY=window.innerHeight*0.42;
+    els.zoom.value='5.0';
+    updateLabels();
+});
+
+function resize(){
+    const dpr=Math.min(window.devicePixelRatio,1.5);
+    canvas.width=window.innerWidth*dpr;
+    canvas.height=window.innerHeight*dpr;
+    gl.viewport(0,0,canvas.width,canvas.height);
+}
+window.addEventListener('resize',resize);
+resize();
+
+targetMouseX=window.innerWidth*0.5;
+targetMouseY=window.innerHeight*0.42;
+mouseX=targetMouseX;
+mouseY=targetMouseY;
+
+let frameCount=0,lastFpsTime=0;
+const infoEl=document.getElementById('info');
+
+function render(time){
+    time*=0.001;
+
+    // Smooth camera interpolation
+    mouseX+=(targetMouseX-mouseX)*0.08;
+    mouseY+=(targetMouseY-mouseY)*0.08;
+
+    frameCount++;
+    if(time-lastFpsTime>=1.0){
+        infoEl.textContent=frameCount+' fps · Event Horizon v1.0';
+        frameCount=0;
+        lastFpsTime=time;
+    }
+
+    gl.uniform2f(U.u_res,canvas.width,canvas.height);
+    gl.uniform1f(U.u_time,time);
+    gl.uniform2f(U.u_mouse,mouseX,mouseY);
+    gl.uniform1f(U.u_mass,parseFloat(els.mass.value));
+    gl.uniform1f(U.u_spin,parseFloat(els.spin.value));
+    gl.uniform1f(U.u_glow,parseFloat(els.glow.value));
+    gl.uniform1f(U.u_zoom,parseFloat(els.zoom.value));
+    gl.uniform1f(U.u_thick,parseFloat(els.thick.value));
+    gl.uniform1f(U.u_temp,parseFloat(els.temp.value));
+    gl.uniform1f(U.u_orbit,autoOrbit?1.0:0.0);
+    gl.uniform1f(U.u_jets,showJets?1.0:0.0);
+    gl.uniform1f(U.u_bloom,showBloom?1.0:0.0);
+    gl.uniform1f(U.u_neb,showNeb?1.0:0.0);
+    gl.uniform1f(U.u_doppler,showDoppler?1.0:0.0);
+
+    gl.drawArrays(gl.TRIANGLES,0,6);
+    requestAnimationFrame(render);
+}
+requestAnimationFrame(render);
+</script>
+</body>
+</html>

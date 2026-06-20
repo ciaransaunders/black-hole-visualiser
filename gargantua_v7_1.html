@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interactive Gargantua Black Hole</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #000;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            color: white;
+        }
+
+        canvas {
+            display: block;
+            width: 100vw;
+            height: 100vh;
+        }
+
+        #ui-container {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 20px;
+            border-radius: 12px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(5px);
+            width: 250px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+            pointer-events: auto;
+        }
+
+        h1 {
+            margin: 0 0 15px 0;
+            font-size: 18px;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            border-bottom: 1px solid rgba(255,255,255,0.2);
+            padding-bottom: 10px;
+            color: #ffccaa;
+        }
+
+        .control-group {
+            margin-bottom: 15px;
+        }
+
+        label {
+            display: flex;
+            justify-content: space-between;
+            font-size: 12px;
+            margin-bottom: 5px;
+            color: #ccc;
+        }
+
+        input[type="range"] {
+            width: 100%;
+            -webkit-appearance: none;
+            background: rgba(255, 255, 255, 0.1);
+            height: 4px;
+            border-radius: 2px;
+            outline: none;
+        }
+
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 16px;
+            height: 16px;
+            background: #ffccaa;
+            border-radius: 50%;
+            cursor: pointer;
+            transition: transform 0.1s;
+        }
+
+        input[type="range"]::-webkit-slider-thumb:hover {
+            transform: scale(1.2);
+        }
+
+        .info {
+            font-size: 11px;
+            color: #888;
+            margin-top: 15px;
+            line-height: 1.4;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="ui-container">
+        <h1>Gargantua</h1>
+        
+        <div class="control-group">
+            <label>Event Horizon Mass <span id="val-mass">0.5</span></label>
+            <input type="range" id="mass" min="0.1" max="1.5" step="0.01" value="0.5">
+        </div>
+
+        <div class="control-group">
+            <label>Disk Brightness <span id="val-glow">2.0</span></label>
+            <input type="range" id="glow" min="0.0" max="6.0" step="0.1" value="2.0">
+        </div>
+
+        <div class="control-group">
+            <label>Camera Zoom <span id="val-zoom">6.0</span></label>
+            <input type="range" id="zoom" min="2.5" max="15.0" step="0.1" value="6.0">
+        </div>
+
+        <div class="info">
+            <p><strong>Drag</strong> to orbit.</p>
+            <p>Gravitational lensing via ray marching.</p>
+        </div>
+    </div>
+
+    <canvas id="glcanvas"></canvas>
+
+    <script id="vertex-shader" type="x-shader/x-vertex">
+        attribute vec2 a_position;
+        void main() {
+            gl_Position = vec4(a_position, 0.0, 1.0);
+        }
+    </script>
+
+    <script id="fragment-shader" type="x-shader/x-fragment">
+        precision highp float;
+
+        uniform vec2 u_resolution;
+        uniform float u_time;
+        uniform vec2 u_mouse;
+        uniform float u_mass;
+        uniform float u_glow_intensity;
+        uniform float u_zoom;
+
+        mat2 rot(float a) {
+            float s = sin(a);
+            float c = cos(a);
+            return mat2(c, -s, s, c);
+        }
+
+        // Improved hash - less prone to artifacts
+        float hash(vec2 p) {
+            p = fract(p * vec2(234.34, 435.345));
+            p += dot(p, p + 34.23);
+            return fract(p.x * p.y);
+        }
+
+        // Smoother noise with better continuity
+        float noise(vec2 p) {
+            vec2 i = floor(p);
+            vec2 f = fract(p);
+            // Quintic interpolation for smoother results
+            vec2 u = f * f * f * (f * (f * 6.0 - 15.0) + 10.0);
+            
+            float a = hash(i + vec2(0.0, 0.0));
+            float b = hash(i + vec2(1.0, 0.0));
+            float c = hash(i + vec2(0.0, 1.0));
+            float d = hash(i + vec2(1.0, 1.0));
+            
+            return mix(mix(a, b, u.x), mix(c, d, u.x), u.y);
+        }
+
+        float fbm(vec2 p) {
+            float v = 0.0;
+            float a = 0.5;
+            mat2 m = mat2(0.8, 0.6, -0.6, 0.8); // Rotation to reduce artifacts
+            for (int i = 0; i < 4; i++) {
+                v += a * noise(p);
+                p = m * p * 2.0;
+                a *= 0.5;
+            }
+            return v;
+        }
+
+        void main() {
+            vec2 uv = (gl_FragCoord.xy - 0.5 * u_resolution.xy) / u_resolution.y;
+
+            float camDist = u_zoom;
+            
+            float angleY = (u_mouse.x / u_resolution.x) * 6.28318 + 3.14159; 
+            float angleX = ((u_mouse.y / u_resolution.y) - 0.5) * 3.0;
+
+            vec3 ro = vec3(0.0, 0.0, -camDist); 
+            ro.yz *= rot(angleX);
+            ro.xz *= rot(angleY);
+
+            vec3 target = vec3(0.0, 0.0, 0.0);
+            vec3 fwd = normalize(target - ro);
+            vec3 right = normalize(cross(vec3(0.0, 1.0, 0.0), fwd));
+            vec3 up = cross(fwd, right);
+            vec3 rd = normalize(fwd + uv.x * right + uv.y * up);
+
+            vec3 bhPos = vec3(0.0);
+            float eventHorizon = u_mass; 
+            float accretionInner = eventHorizon * 1.5; 
+            float accretionOuter = eventHorizon * 7.0;
+            
+            vec3 col = vec3(0.0); 
+            vec3 p = ro; 
+            vec3 dir = rd; 
+            
+            float minDistToBh = 100.0;
+            bool fellIn = false;
+            
+            for(int i = 0; i < 150; i++) {
+                float d = length(p - bhPos);
+                minDistToBh = min(minDistToBh, d);
+                
+                // Smaller step size for smoother disk intersection
+                float stepSize = max(0.015, d * 0.04); 
+                
+                vec3 force = normalize(bhPos - p) * (eventHorizon * 2.0) / (d * d + 0.1);
+                dir = normalize(dir + force * stepSize * 0.5);
+                
+                vec3 prevP = p;
+                p += dir * stepSize;
+                
+                if(d < eventHorizon) {
+                    fellIn = true;
+                    break;
+                }
+                
+                // Accretion Disk - smoother intersection
+                if(prevP.y * p.y < 0.0) {
+                    float t = -prevP.y / (p.y - prevP.y);
+                    vec3 intersect = prevP + (p - prevP) * t;
+                    float distFromCenter = length(intersect.xz);
+                    
+                    if(distFromCenter > accretionInner && distFromCenter < accretionOuter) {
+                        // Use atan2 properly and normalize angle to avoid discontinuities
+                        float angle = atan(intersect.z, intersect.x);
+                        
+                        // Smoother speed variation
+                        float speed = 2.5 / (distFromCenter * distFromCenter + 0.5);
+                        
+                        // Use polar coordinates for noise to avoid seams
+                        // Map angle to a continuous coordinate
+                        float angleNorm = angle / 6.28318 + 0.5; // 0 to 1
+                        float noiseVal = fbm(vec2(distFromCenter * 2.5, angleNorm * 8.0 + u_time * speed));
+                        
+                        // Additional ring structure
+                        float rings = 0.5 + 0.5 * sin(distFromCenter * 12.0 - u_time * speed * 2.0);
+                        noiseVal = mix(noiseVal, rings, 0.3);
+                        
+                        // Temperature gradient
+                        float temp = pow(accretionInner / distFromCenter, 0.75);
+                        
+                        // Color palette - warmer
+                        vec3 hotColor = vec3(1.0, 0.95, 0.85);
+                        vec3 warmColor = vec3(1.0, 0.6, 0.2);
+                        vec3 coolColor = vec3(0.7, 0.3, 0.1);
+                        
+                        vec3 diskCol;
+                        if (temp > 0.7) {
+                            diskCol = mix(warmColor, hotColor, (temp - 0.7) / 0.3);
+                        } else if (temp > 0.4) {
+                            diskCol = mix(coolColor, warmColor, (temp - 0.4) / 0.3);
+                        } else {
+                            diskCol = coolColor * (temp / 0.4);
+                        }
+                        
+                        // Smoother edge falloff
+                        float innerFade = smoothstep(accretionInner, accretionInner + 0.3, distFromCenter);
+                        float outerFade = smoothstep(accretionOuter, accretionOuter - 1.5, distFromCenter);
+                        float edgeFade = innerFade * outerFade;
+                        
+                        // Doppler Beaming
+                        vec3 diskVel = normalize(vec3(-intersect.z, 0.0, intersect.x));
+                        float doppler = dot(diskVel, normalize(ro - intersect));
+                        float beam = 0.5 + 0.5 * doppler;
+                        beam = pow(beam, 3.0) * 2.0; 
+                        
+                        // Combine - higher base brightness
+                        float brightness = (0.4 + 0.6 * noiseVal) * edgeFade * beam * temp;
+                        vec3 sampleCol = diskCol * brightness * u_glow_intensity;
+                        
+                        // Accumulate with higher contribution
+                        col += sampleCol * 0.7; 
+                    }
+                }
+                
+                // Escape
+                if(d > 25.0) {
+                    float stars = pow(hash(dir.xy * 150.0 + dir.z * 73.0), 280.0) * 0.9;
+                    col += vec3(stars);
+                    break;
+                }
+            }
+            
+            // Photon Ring Glow - only for escaped rays
+            if(!fellIn) {
+                float photonSphere = eventHorizon * 1.5;
+                float glowWidth = eventHorizon * 0.25;
+                float glowFactor = exp(-pow((minDistToBh - photonSphere) / glowWidth, 2.0));
+                col += vec3(1.0, 0.7, 0.4) * glowFactor * u_glow_intensity * 0.5;
+            }
+            
+            // Tone mapping - adjusted for higher brightness
+            col = col / (0.8 + col);
+
+            gl_FragColor = vec4(col, 1.0);
+        }
+    </script>
+
+    <script>
+        const canvas = document.getElementById('glcanvas');
+        const gl = canvas.getContext('webgl');
+
+        if (!gl) { alert('WebGL not supported'); }
+
+        function createShader(gl, type, source) {
+            const shader = gl.createShader(type);
+            gl.shaderSource(shader, source);
+            gl.compileShader(shader);
+            if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+                console.error(gl.getShaderInfoLog(shader));
+                gl.deleteShader(shader);
+                return null;
+            }
+            return shader;
+        }
+
+        const vsSource = document.getElementById('vertex-shader').text;
+        const fsSource = document.getElementById('fragment-shader').text;
+        const vertexShader = createShader(gl, gl.VERTEX_SHADER, vsSource);
+        const fragmentShader = createShader(gl, gl.FRAGMENT_SHADER, fsSource);
+        const program = gl.createProgram();
+        gl.attachShader(program, vertexShader);
+        gl.attachShader(program, fragmentShader);
+        gl.linkProgram(program);
+        gl.useProgram(program);
+
+        const positionBuffer = gl.createBuffer();
+        gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+        const positions = [-1.0, -1.0, 1.0, -1.0, -1.0, 1.0, -1.0, 1.0, 1.0, -1.0, 1.0, 1.0];
+        gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(positions), gl.STATIC_DRAW);
+
+        const positionAttributeLocation = gl.getAttribLocation(program, "a_position");
+        gl.enableVertexAttribArray(positionAttributeLocation);
+        gl.vertexAttribPointer(positionAttributeLocation, 2, gl.FLOAT, false, 0, 0);
+
+        const uResolution = gl.getUniformLocation(program, "u_resolution");
+        const uTime = gl.getUniformLocation(program, "u_time");
+        const uMouse = gl.getUniformLocation(program, "u_mouse");
+        const uMass = gl.getUniformLocation(program, "u_mass");
+        const uGlow = gl.getUniformLocation(program, "u_glow_intensity");
+        const uZoom = gl.getUniformLocation(program, "u_zoom");
+
+        let mouseX = window.innerWidth / 2;
+        let mouseY = window.innerHeight / 2;
+        let isDragging = false;
+        let lastX = 0;
+        let lastY = 0;
+
+        const elMass = document.getElementById('mass');
+        const elGlow = document.getElementById('glow');
+        const elZoom = document.getElementById('zoom');
+        const valMass = document.getElementById('val-mass');
+        const valGlow = document.getElementById('val-glow');
+        const valZoom = document.getElementById('val-zoom');
+
+        function updateUI() {
+            valMass.innerText = elMass.value;
+            valGlow.innerText = elGlow.value;
+            valZoom.innerText = elZoom.value;
+        }
+        [elMass, elGlow, elZoom].forEach(el => el.addEventListener('input', updateUI));
+
+        window.addEventListener('mousedown', e => { isDragging = true; lastX = e.clientX; lastY = e.clientY; });
+        window.addEventListener('mouseup', () => isDragging = false);
+        window.addEventListener('mousemove', e => {
+            if (isDragging) {
+                mouseX += e.clientX - lastX;
+                mouseY += e.clientY - lastY;
+                lastX = e.clientX;
+                lastY = e.clientY;
+            }
+        });
+
+        window.addEventListener('touchstart', e => { isDragging = true; lastX = e.touches[0].clientX; lastY = e.touches[0].clientY; });
+        window.addEventListener('touchend', () => isDragging = false);
+        window.addEventListener('touchmove', e => {
+            if (isDragging) {
+                mouseX += (e.touches[0].clientX - lastX) * 2.0;
+                mouseY += (e.touches[0].clientY - lastY) * 2.0;
+                lastX = e.touches[0].clientX;
+                lastY = e.touches[0].clientY;
+            }
+        });
+
+        function resize() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
+        }
+        window.addEventListener('resize', resize);
+        resize();
+
+        function render(time) {
+            time *= 0.001;
+            gl.uniform2f(uResolution, canvas.width, canvas.height);
+            gl.uniform1f(uTime, time);
+            gl.uniform2f(uMouse, mouseX, mouseY);
+            gl.uniform1f(uMass, parseFloat(elMass.value));
+            gl.uniform1f(uGlow, parseFloat(elGlow.value));
+            gl.uniform1f(uZoom, parseFloat(elZoom.value));
+            gl.drawArrays(gl.TRIANGLES, 0, 6);
+            requestAnimationFrame(render);
+        }
+        requestAnimationFrame(render);
+    </script>
+</body>
+</html>

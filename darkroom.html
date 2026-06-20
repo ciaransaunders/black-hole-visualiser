@@ -1,0 +1,807 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>DARKROOM — a long-exposure photograph of a black hole</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --silver:rgba(208,216,230,0.62);
+  --silver-dim:rgba(208,216,230,0.30);
+  --silver-faint:rgba(208,216,230,0.16);
+  --gold:rgba(232,186,110,0.85);
+  --gold-dim:rgba(232,186,110,0.45);
+  --frame:rgba(208,216,230,0.13);
+  --serif:'Iowan Old Style','Palatino Linotype','Palatino','Book Antiqua',Georgia,serif;
+  --mono:ui-monospace,'SF Mono',Menlo,'Cascadia Mono',Consolas,monospace;
+}
+html,body{height:100%}
+body{
+  background:#070708;
+  overflow:hidden;
+  user-select:none;
+  -webkit-user-select:none;
+  font-family:var(--mono);
+  color:var(--silver);
+}
+#stage{
+  position:fixed;
+  top:64px;left:72px;right:72px;bottom:118px;
+  border:1px solid var(--frame);
+  box-shadow:0 0 0 1px rgba(0,0,0,0.9), inset 0 0 60px rgba(0,0,0,0.55);
+}
+#plate{
+  position:absolute;inset:0;width:100%;height:100%;display:block;
+  background:#000;cursor:crosshair;touch-action:none;
+}
+/* corner crop marks */
+.crop{position:absolute;width:10px;height:10px;border-color:var(--silver-faint);border-style:solid;border-width:0}
+.crop.tl{top:-1px;left:-1px;border-top-width:1px;border-left-width:1px}
+.crop.tr{top:-1px;right:-1px;border-top-width:1px;border-right-width:1px}
+.crop.bl{bottom:-1px;left:-1px;border-bottom-width:1px;border-left-width:1px}
+.crop.br{bottom:-1px;right:-1px;border-bottom-width:1px;border-right-width:1px}
+
+/* ── margin annotations ── */
+#title-block{position:fixed;top:18px;left:74px;line-height:1.5;pointer-events:none}
+#title-block .t{font-family:var(--serif);font-size:15px;letter-spacing:9px;color:rgba(214,222,236,0.78)}
+#title-block .s{font-size:8.5px;letter-spacing:2.6px;color:var(--silver-dim);text-transform:uppercase}
+
+#physics-note{position:fixed;top:22px;right:74px;text-align:right;line-height:1.7;pointer-events:none}
+#physics-note .p{font-size:8.5px;letter-spacing:1.6px;color:var(--silver-dim);text-transform:uppercase}
+#scalebar{display:inline-block;height:5px;border-left:1px solid var(--silver-dim);border-right:1px solid var(--silver-dim);position:relative;vertical-align:middle;margin-right:7px}
+#scalebar::after{content:'';position:absolute;left:0;right:0;top:2px;height:1px;background:var(--silver-dim)}
+
+#stats{position:fixed;bottom:86px;left:74px;font-size:9.5px;letter-spacing:1.8px;color:var(--silver);text-transform:uppercase;pointer-events:none;font-variant-numeric:tabular-nums}
+#beam-hud{position:fixed;bottom:64px;left:74px;font-size:9.5px;letter-spacing:1.4px;color:var(--gold);text-transform:uppercase;pointer-events:none;opacity:0;transition:opacity .45s;font-variant-numeric:tabular-nums}
+#beam-hud.show{opacity:1}
+
+#controls{position:fixed;bottom:84px;right:74px;display:flex;gap:18px;align-items:baseline}
+.btn{font-size:9.5px;letter-spacing:2.2px;color:var(--silver-dim);text-transform:uppercase;cursor:pointer;transition:color .2s;white-space:nowrap}
+.btn:hover{color:var(--gold)}
+.btn.on{color:var(--gold)}
+.btn .dot{font-size:8px;vertical-align:1px}
+
+#legend{position:fixed;bottom:44px;left:0;right:0;text-align:center;font-size:8.5px;letter-spacing:2px;color:var(--silver-dim);text-transform:uppercase;pointer-events:none}
+#legend i{font-style:normal}
+#legend .sw{display:inline-block;width:18px;height:1px;vertical-align:3px;margin:0 6px 0 14px}
+#hints{position:fixed;bottom:22px;left:0;right:0;text-align:center;font-size:8.5px;letter-spacing:1.6px;color:var(--silver-faint);text-transform:uppercase;pointer-events:none}
+
+#shutter-note{
+  position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);
+  font-family:var(--serif);font-style:italic;font-size:14px;letter-spacing:4px;
+  color:rgba(214,222,236,0.5);pointer-events:none;
+  animation:shutfade 2.4s ease forwards;
+}
+@keyframes shutfade{0%{opacity:0}25%{opacity:1}70%{opacity:1}100%{opacity:0}}
+
+#toast{
+  position:fixed;bottom:140px;left:50%;transform:translateX(-50%);
+  font-size:9.5px;letter-spacing:2.4px;color:var(--gold-dim);text-transform:uppercase;
+  opacity:0;transition:opacity .4s;pointer-events:none;
+}
+#toast.show{opacity:1}
+
+#torch-mark{
+  position:fixed;width:13px;height:13px;margin:-7px 0 0 -7px;pointer-events:none;opacity:0;transition:opacity .25s;
+}
+#torch-mark::before,#torch-mark::after{content:'';position:absolute;background:var(--gold-dim)}
+#torch-mark::before{left:6px;top:0;width:1px;height:13px}
+#torch-mark::after{top:6px;left:0;height:1px;width:13px}
+#torch-mark.show{opacity:1}
+
+#nogl{position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);font-family:var(--serif);font-style:italic;font-size:14px;color:var(--silver);display:none;text-align:center;line-height:2}
+</style>
+</head>
+<body>
+
+<div id="stage">
+  <canvas id="plate"></canvas>
+  <div class="crop tl"></div><div class="crop tr"></div><div class="crop bl"></div><div class="crop br"></div>
+</div>
+
+<div id="title-block">
+  <div class="t">D A R K R O O M</div>
+  <div class="s">a long-exposure photograph of a black hole · every mark is the true path of one photon</div>
+</div>
+
+<div id="physics-note">
+  <div class="p">schwarzschild field · null geodesics · b<sub>c</sub> = 3√3·GM/c² ≈ 2.598 r<sub>s</sub></div>
+  <div class="p" style="margin-top:3px"><span id="scalebar"></span><span id="scalebar-label">1 r<sub>s</sub></span></div>
+</div>
+
+<div id="stats">PLATE №1 · EXPOSURE 00:00 · 0 PHOTONS · — SWALLOWED</div>
+<div id="beam-hud"></div>
+
+<div id="controls">
+  <span class="btn on" id="b-rain">RAIN <span class="dot">●</span></span>
+  <span class="btn" id="b-orbit">ORBIT <span class="dot">○</span></span>
+  <span class="btn" id="b-expdn">−</span>
+  <span class="btn" id="b-explabel" style="cursor:default">EXP&nbsp;0</span>
+  <span class="btn" id="b-expup">+</span>
+  <span class="btn" id="b-scale">SCALE 1:5.5</span>
+  <span class="btn" id="b-new">NEW PLATE</span>
+  <span class="btn" id="b-save">SAVE</span>
+</div>
+
+<div id="legend">
+  the image draws itself —
+  <span class="sw" style="background:rgba(168,178,196,0.8)"></span><i>light barely bent</i>
+  <span class="sw" style="background:rgba(255,196,102,0.9)"></span><i>light that circled the hole</i>
+  <span class="sw" style="background:#000;border-top:1px dashed rgba(208,216,230,0.25);height:0"></span><i>light that never returned</i>
+</div>
+<div id="hints">hold + drag — aim a torch &nbsp;·&nbsp; tap — drop a star &nbsp;·&nbsp; R rain &nbsp;·&nbsp; O orbiting star &nbsp;·&nbsp; − + exposure &nbsp;·&nbsp; N new plate &nbsp;·&nbsp; S save</div>
+
+<div id="shutter-note">— opening the shutter —</div>
+<div id="toast"></div>
+<div id="torch-mark"></div>
+<div id="nogl">the darkroom is closed —<br>this plate requires WebGL</div>
+
+<script>
+(function(){
+'use strict';
+
+/* ════════════════════════════════════════════════════════════════════
+   DARKROOM
+   A black hole photographed by accumulation: we integrate true null
+   geodesics of the Schwarzschild metric (the central force
+   a = -(3/2) rs L² / r⁵ · r̂  reproduces the photon Binet equation
+   d²u/dφ² + u = (3/2) rs u² exactly), and every photon exposes the
+   plate as it travels. Nothing else is drawn. The photon sphere at
+   r = 1.5 rs and the shadow emerge on their own.
+   Units: rs = 1, c = 1.
+   ════════════════════════════════════════════════════════════════════ */
+
+const TAU = Math.PI*2;
+const BCRIT = 3*Math.sqrt(3)/2;        // 2.598... critical impact parameter
+const LIGHT_SPEED = 16;                // rs per second of exposure
+const SHUTTER_DELAY = 1.5;             // s before first light
+const MAXP = 26000;                    // photon pool
+const MAXSEG = 90000;                  // segments per frame
+const EMIT_MIN = 0.024;                // min world length of a trail segment
+
+const canvas = document.getElementById('plate');
+const stage  = document.getElementById('stage');
+
+/* ── GL bootstrap ─────────────────────────────────────────────────── */
+let gl = canvas.getContext('webgl2', {alpha:false, antialias:false, depth:false, stencil:false, powerPreference:'high-performance'});
+let isGL2 = !!gl;
+if(!gl) gl = canvas.getContext('webgl', {alpha:false, antialias:false, depth:false, stencil:false});
+if(!gl){ document.getElementById('nogl').style.display='block'; return; }
+
+let halfFloatOK=false, accumType=gl.UNSIGNED_BYTE, accumInternal=gl.RGBA, halfExt=null;
+if(isGL2){
+  if(gl.getExtension('EXT_color_buffer_float')){ halfFloatOK=true; accumInternal=gl.RGBA16F; accumType=gl.HALF_FLOAT; }
+}else{
+  halfExt = gl.getExtension('OES_texture_half_float');
+  const cbhf = gl.getExtension('EXT_color_buffer_half_float');
+  if(halfExt && cbhf){ halfFloatOK=true; accumType=halfExt.HALF_FLOAT_OES; }
+}
+const I_BASE = halfFloatOK ? 0.045 : 0.020;
+
+function mkProgram(vsSrc, fsSrc, attribs){
+  function sh(type, src){
+    const s = gl.createShader(type);
+    gl.shaderSource(s, src); gl.compileShader(s);
+    if(!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s)+'\n'+src);
+    return s;
+  }
+  const p = gl.createProgram();
+  gl.attachShader(p, sh(gl.VERTEX_SHADER, vsSrc));
+  gl.attachShader(p, sh(gl.FRAGMENT_SHADER, fsSrc));
+  attribs.forEach((name,i)=>gl.bindAttribLocation(p, i, name));
+  gl.linkProgram(p);
+  if(!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p));
+  return p;
+}
+function uni(p){ // collect uniforms
+  const out={}, n=gl.getProgramParameter(p, gl.ACTIVE_UNIFORMS);
+  for(let i=0;i<n;i++){ const info=gl.getActiveUniform(p,i); out[info.name]=gl.getUniformLocation(p,info.name); }
+  return out;
+}
+
+/* trail pass: world-space line segments, additive */
+const progLine = mkProgram(
+`attribute vec2 a_pos; attribute vec3 a_col; varying vec3 v_col;
+uniform vec2 u_center; uniform vec2 u_invHalf;
+void main(){ gl_Position = vec4((a_pos - u_center) * u_invHalf, 0.0, 1.0); v_col = a_col; }`,
+`precision mediump float; varying vec3 v_col;
+void main(){ gl_FragColor = vec4(v_col, 1.0); }`,
+['a_pos','a_col']);
+const uLine = uni(progLine);
+
+/* fullscreen triangle */
+const FSQ_VS =
+`attribute vec2 a_pos; varying vec2 v_uv;
+void main(){ v_uv = a_pos*0.5+0.5; gl_Position = vec4(a_pos,0.0,1.0); }`;
+
+/* halation: threshold + downsample */
+const progThresh = mkProgram(FSQ_VS,
+`precision mediump float; varying vec2 v_uv;
+uniform sampler2D u_src; uniform vec2 u_texel; uniform float u_exposure, u_thresh;
+void main(){
+  vec3 s = texture2D(u_src, v_uv + u_texel*vec2(-0.7,-0.7)).rgb
+         + texture2D(u_src, v_uv + u_texel*vec2( 0.7,-0.7)).rgb
+         + texture2D(u_src, v_uv + u_texel*vec2(-0.7, 0.7)).rgb
+         + texture2D(u_src, v_uv + u_texel*vec2( 0.7, 0.7)).rgb;
+  vec3 c = s * 0.25 * u_exposure;
+  vec3 b = max(c - vec3(u_thresh), vec3(0.0));
+  gl_FragColor = vec4(1.0 - exp(-b*1.3), 1.0);
+}`, ['a_pos']);
+const uThresh = uni(progThresh);
+
+const progBlur = mkProgram(FSQ_VS,
+`precision mediump float; varying vec2 v_uv;
+uniform sampler2D u_src; uniform vec2 u_texel; uniform vec2 u_dir;
+void main(){
+  vec2 o1 = u_dir*u_texel*1.3846154; vec2 o2 = u_dir*u_texel*3.2307692;
+  vec3 c = texture2D(u_src, v_uv).rgb*0.2270270;
+  c += (texture2D(u_src, v_uv+o1).rgb + texture2D(u_src, v_uv-o1).rgb)*0.3162162;
+  c += (texture2D(u_src, v_uv+o2).rgb + texture2D(u_src, v_uv-o2).rgb)*0.0702703;
+  gl_FragColor = vec4(c, 1.0);
+}`, ['a_pos']);
+const uBlur = uni(progBlur);
+
+/* display: tone curve, halation composite, plate fog, grain */
+const progShow = mkProgram(FSQ_VS,
+`precision mediump float; varying vec2 v_uv;
+uniform sampler2D u_src, u_bloom;
+uniform float u_exposure, u_time, u_bloomAmt;
+float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.545); }
+void main(){
+  vec3 acc = texture2D(u_src, v_uv).rgb * u_exposure;
+  vec3 blm = texture2D(u_bloom, v_uv).rgb;
+  vec3 c = acc + blm * u_bloomAmt * vec3(1.0, 0.93, 0.80);
+  vec3 m = 1.0 - exp(-c);
+  m = pow(m, vec3(1.0/1.9));
+  m += vec3(0.006, 0.0066, 0.0082);                       /* plate base fog */
+  m += (hash(gl_FragCoord.xy + fract(u_time)*61.7) - 0.5) * 0.016; /* grain */
+  vec2 q = v_uv - 0.5;
+  m *= 1.0 - dot(q,q)*0.22;                                /* falloff */
+  gl_FragColor = vec4(m, 1.0);
+}`, ['a_pos']);
+const uShow = uni(progShow);
+
+/* buffers */
+const triBuf = gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER, triBuf);
+gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 3,-1, -1,3]), gl.STATIC_DRAW);
+
+const segBuf = gl.createBuffer();
+const segData = new Float32Array(MAXSEG*2*5);
+gl.bindBuffer(gl.ARRAY_BUFFER, segBuf);
+gl.bufferData(gl.ARRAY_BUFFER, segData.byteLength, gl.DYNAMIC_DRAW);
+
+/* framebuffers */
+function mkTarget(w, h, internal, type, filter){
+  const tex = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, tex);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, filter);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, filter);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  gl.texImage2D(gl.TEXTURE_2D, 0, internal, w, h, 0, gl.RGBA, type, null);
+  const fbo = gl.createFramebuffer();
+  gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
+  const ok = gl.checkFramebufferStatus(gl.FRAMEBUFFER) === gl.FRAMEBUFFER_COMPLETE;
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  return {tex, fbo, w, h, ok};
+}
+
+let accum=null, bloomA=null, bloomB=null;
+let devW=0, devH=0, cssW=0, cssH=0, dpr=1;
+
+function buildTargets(){
+  if(accum){ [accum,bloomA,bloomB].forEach(t=>{gl.deleteTexture(t.tex);gl.deleteFramebuffer(t.fbo);}); }
+  // accumulation plate (HDR if available)
+  accum = mkTarget(devW, devH, accumInternal, accumType, halfFloatOK&&!isGL2 ? gl.NEAREST : gl.LINEAR);
+  if(!accum.ok && halfFloatOK){ // driver refused float target — fall back
+    halfFloatOK=false; accumInternal=gl.RGBA; accumType=gl.UNSIGNED_BYTE;
+    accum = mkTarget(devW, devH, gl.RGBA, gl.UNSIGNED_BYTE, gl.LINEAR);
+  }
+  const qw = Math.max(2, devW>>2), qh = Math.max(2, devH>>2);
+  bloomA = mkTarget(qw, qh, gl.RGBA, gl.UNSIGNED_BYTE, gl.LINEAR);
+  bloomB = mkTarget(qw, qh, gl.RGBA, gl.UNSIGNED_BYTE, gl.LINEAR);
+}
+
+/* ── the view: plate framing ──────────────────────────────────────── */
+const SCALES = [3.5, 5.5, 8.0];
+let scaleIdx = 1;
+let HH = SCALES[scaleIdx];   // world half-height of the plate, in rs
+let CX = 2.4, CY = 0;        // view centre; hole at origin sits left of centre
+let HW = 8;                  // derived
+let pxPerRsCss = 60;
+
+function resize(){
+  /* the plate is deliberately rendered a touch below device resolution:
+     hairline trails gain weight and the upscale reads as emulsion softness */
+  dpr = Math.min(window.devicePixelRatio||1, 1.25);
+  const r = stage.getBoundingClientRect();
+  cssW = Math.max(64, Math.floor(r.width)); cssH = Math.max(64, Math.floor(r.height));
+  devW = Math.floor(cssW*dpr); devH = Math.floor(cssH*dpr);
+  canvas.width = devW; canvas.height = devH;
+  HW = HH * (cssW/cssH);
+  pxPerRsCss = cssH/(2*HH);
+  buildTargets();
+  resetPlate(false);
+  const sb = document.getElementById('scalebar');
+  sb.style.width = Math.round(pxPerRsCss)+'px';
+}
+window.addEventListener('resize', resize);
+
+/* ── photon pool ──────────────────────────────────────────────────── */
+const px=new Float32Array(MAXP), py=new Float32Array(MAXP),
+      vx=new Float32Array(MAXP), vy=new Float32Array(MAXP),
+      turn=new Float32Array(MAXP),
+      lex=new Float32Array(MAXP), ley=new Float32Array(MAXP),
+      kind=new Uint8Array(MAXP); // 0 rain 1 beam 2 star 3 orbit
+const freeStack = new Int32Array(MAXP);
+let freeTop = MAXP;
+for(let i=0;i<MAXP;i++) freeStack[i]=MAXP-1-i;
+const active = new Int32Array(MAXP);
+let activeCount = 0;
+
+function spawn(x, y, dx, dy, k){
+  if(freeTop===0) return;
+  const s = freeStack[--freeTop];
+  const inv = 1/Math.hypot(dx,dy);
+  px[s]=x; py[s]=y; vx[s]=dx*inv; vy[s]=dy*inv;
+  turn[s]=0; lex[s]=x; ley[s]=y; kind[s]=k;
+  active[activeCount++]=s;
+  stTraced++;
+}
+
+/* ── exposure bookkeeping & statistics ────────────────────────────── */
+let plateNo = 1;
+try{ plateNo = parseInt(localStorage.getItem('darkroom-plate')||'1',10)||1; }catch(e){}
+let expClock = 0;            // seconds of open shutter
+let energyWorld = 0;         // Σ emitted segment length (world units)
+let stTraced=0, stCaptured=0, stEscaped=0;
+let beamShots=0, beamCaught=0, beamFled=0, beamTurnSum=0;
+let userStops = 0;
+let exposure = 6, exposureTarget = 6;
+
+function resetPlate(advance){
+  gl.bindFramebuffer(gl.FRAMEBUFFER, accum.fbo);
+  gl.clearColor(0,0,0,0); gl.clear(gl.COLOR_BUFFER_BIT);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  expClock=0; energyWorld=0; stTraced=0; stCaptured=0; stEscaped=0;
+  if(advance){ plateNo++; try{ localStorage.setItem('darkroom-plate', String(plateNo)); }catch(e){} }
+}
+
+/* ── geodesic integrator ──────────────────────────────────────────────
+   a(x,v) = -(3/2) L²/r⁵ · (x,y),  L = x·vy - y·vx  (rs = 1).
+   Any central force ∝ L² is invariant under speed renormalisation, so
+   we keep |v| = 1 and the path shape stays the exact GR null geodesic. */
+let segCount = 0;
+
+function emitSeg(x0,y0,x1,y1, t, k){
+  if(segCount>=MAXSEG) return;
+  // colour from accumulated deflection: silver → gold → amber
+  let t1 = (t-0.45)/1.65; t1 = t1<0?0:(t1>1?1:t1); t1 = t1*t1*(3-2*t1);
+  let t2 = (t-2.1)/3.1;   t2 = t2<0?0:(t2>1?1:t2); t2 = t2*t2*(3-2*t2);
+  let r = 0.60+(1.00-0.60)*t1, g = 0.65+(0.77-0.65)*t1, b = 0.74+(0.40-0.74)*t1;
+  r += (1.04-r)*t2; g += (0.40-g)*t2; b += (0.15-b)*t2;
+  const boost = k===0?0.8 : k===2?1.05 : k===3?0.95 : 1.0;
+  const I = I_BASE*boost;
+  const o = segCount*10;
+  segData[o  ]=x0; segData[o+1]=y0; segData[o+2]=r*I; segData[o+3]=g*I; segData[o+4]=b*I;
+  segData[o+5]=x1; segData[o+6]=y1; segData[o+7]=r*I; segData[o+8]=g*I; segData[o+9]=b*I;
+  segCount++;
+  // auto-exposure bookkeeping: only light landing on the plate counts
+  const mx=(x0+x1)*0.5, my=(y0+y1)*0.5;
+  if(mx>CX-HW && mx<CX+HW && my>CY-HH && my<CY+HH){
+    const dx=x1-x0, dy=y1-y0;
+    energyWorld += Math.sqrt(dx*dx+dy*dy);
+  }
+}
+
+function stepPhotons(dt){
+  const budget0 = LIGHT_SPEED*dt;
+  const xmin = CX-HW-2.5, xmax = CX+HW+2.5, ymax = HH+2.5;
+  for(let i=0;i<activeCount;i++){
+    const s = active[i];
+    let x=px[s], y=py[s], ux=vx[s], uy=vy[s], tn=turn[s];
+    let budget = budget0, steps = 0, dead = 0; // 1 captured, 2 escaped
+    while(budget>0 && steps<90){
+      const r2a = x*x+y*y;
+      const ra = Math.sqrt(r2a);
+      if(ra<1.0){ dead=1; break; }
+      if(x<xmin||x>xmax||y>ymax||y<-ymax||ra>44){ dead=2; break; }
+      let h = 0.05*(ra-0.92);
+      if(h<0.0035) h=0.0035; else if(h>0.30) h=0.30;
+      if(h>budget) h=budget;
+      // RK4 on (x,y,ux,uy)
+      const L1=x*uy-y*ux, k1=-1.5*L1*L1/(r2a*r2a*ra);
+      const a1x=k1*x, a1y=k1*y;
+      const x2=x+0.5*h*ux, y2=y+0.5*h*uy, u2x=ux+0.5*h*a1x, u2y=uy+0.5*h*a1y;
+      const r22=x2*x2+y2*y2, r2s=Math.sqrt(r22);
+      const L2=x2*u2y-y2*u2x, k2=-1.5*L2*L2/(r22*r22*r2s);
+      const a2x=k2*x2, a2y=k2*y2;
+      const x3=x+0.5*h*u2x, y3=y+0.5*h*u2y, u3x=ux+0.5*h*a2x, u3y=uy+0.5*h*a2y;
+      const r23=x3*x3+y3*y3, r3s=Math.sqrt(r23);
+      const L3=x3*u3y-y3*u3x, k3=-1.5*L3*L3/(r23*r23*r3s);
+      const a3x=k3*x3, a3y=k3*y3;
+      const x4=x+h*u3x, y4=y+h*u3y, u4x=ux+h*a3x, u4y=uy+h*a3y;
+      const r24=x4*x4+y4*y4, r4s=Math.sqrt(r24);
+      const L4=x4*u4y-y4*u4x, k4=-1.5*L4*L4/(r24*r24*r4s);
+      const a4x=k4*x4, a4y=k4*y4;
+      const oux=ux, ouy=uy;
+      x += h/6*(ux+2*u2x+2*u3x+u4x);
+      y += h/6*(uy+2*u2y+2*u3y+u4y);
+      ux += h/6*(a1x+2*a2x+2*a3x+a4x);
+      uy += h/6*(a1y+2*a2y+2*a3y+a4y);
+      const inv = 1/Math.sqrt(ux*ux+uy*uy);
+      ux*=inv; uy*=inv;
+      tn += Math.abs(Math.atan2(oux*uy-ouy*ux, oux*ux+ouy*uy));
+      budget -= h; steps++;
+      // trail segment when far enough from last emit point
+      const ddx=x-lex[s], ddy=y-ley[s];
+      if(ddx*ddx+ddy*ddy >= EMIT_MIN*EMIT_MIN){
+        emitSeg(lex[s], ley[s], x, y, tn, kind[s]);
+        lex[s]=x; ley[s]=y;
+      }
+    }
+    px[s]=x; py[s]=y; vx[s]=ux; vy[s]=uy; turn[s]=tn;
+    if(dead){
+      const fdx=x-lex[s], fdy=y-ley[s];
+      if(fdx*fdx+fdy*fdy>1e-8) emitSeg(lex[s], ley[s], x, y, tn, kind[s]);
+      if(dead===1){ stCaptured++; if(kind[s]===1) beamCaught++; }
+      else { stEscaped++; if(kind[s]===1){ beamFled++; beamTurnSum+=tn; } }
+      freeStack[freeTop++]=s;
+      active[i]=active[--activeCount]; i--;
+    }
+  }
+}
+
+/* ── light sources ────────────────────────────────────────────────── */
+let rainOn = true, orbitOn = false;
+let rainCarry=0, orbitCarry=0, beamCarry=0;
+let orbitTheta = 0;
+const ORBIT_R = 6.0, ORBIT_OMEGA = TAU/8.5, ORBIT_BETA = 0.32;
+
+function gauss(){ return (Math.random()+Math.random()+Math.random()-1.5)*0.8165; }
+
+function emitRain(dt){
+  rainCarry += 400*dt;
+  const n = Math.floor(rainCarry); rainCarry-=n;
+  const x0 = CX-HW-0.6;
+  for(let i=0;i<n;i++){
+    const y0 = CY + (Math.random()*2-1)*(HH+0.8);
+    spawn(x0, y0, 1, 0, 0);
+  }
+}
+function emitOrbit(dt){
+  orbitTheta += ORBIT_OMEGA*dt;
+  orbitCarry += 700*dt;
+  const n = Math.floor(orbitCarry); orbitCarry-=n;
+  const sx = ORBIT_R*Math.cos(orbitTheta), sy = ORBIT_R*Math.sin(orbitTheta);
+  const vdx = -Math.sin(orbitTheta), vdy = Math.cos(orbitTheta); // CCW velocity dir
+  for(let i=0;i<n;i++){
+    // relativistic headlight: aberrate isotropic emission toward velocity
+    const u = (Math.random()*2-1)*Math.PI;
+    const cu = Math.cos(u);
+    const cthp = (cu+ORBIT_BETA)/(1+ORBIT_BETA*cu);
+    const thp = Math.acos(Math.max(-1,Math.min(1,cthp))) * Math.sign(u||1);
+    const c=Math.cos(thp), s=Math.sin(thp);
+    spawn(sx, sy, vdx*c - vdy*s, vdx*s + vdy*c, 3);
+  }
+}
+function starBurst(wx, wy){
+  const r = Math.hypot(wx,wy);
+  const n = 1300;
+  for(let i=0;i<n;i++){
+    const a = (i + Math.random())*TAU/n;
+    spawn(wx, wy, Math.cos(a), Math.sin(a), 2);
+  }
+  if(r<1.0) toast('a star dropped inside the horizon — nothing develops');
+  else toast('star · b varies ray by ray');
+}
+
+/* torch (pointer) */
+let aiming=false, aimOx=0, aimOy=0, aimDx=1, aimDy=0, pointerDown=false;
+let downCss={x:0,y:0}, downTime=0, movedFar=false;
+
+function emitBeam(dt){
+  if(!aiming) return;
+  beamCarry += 2300*dt;
+  const n = Math.floor(beamCarry); beamCarry-=n;
+  for(let i=0;i<n;i++){
+    const jx = gauss()*0.03, jy = gauss()*0.03;
+    const ja = gauss()*0.010;
+    const c=Math.cos(ja), s=Math.sin(ja);
+    spawn(aimOx+jx, aimOy+jy, aimDx*c-aimDy*s, aimDx*s+aimDy*c, 1);
+  }
+}
+
+/* ── DOM refs & UI ────────────────────────────────────────────────── */
+const elStats = document.getElementById('stats');
+const elHud = document.getElementById('beam-hud');
+const elToast = document.getElementById('toast');
+const elTorch = document.getElementById('torch-mark');
+let toastTimer=null, hudLinger=null;
+function toast(msg){
+  elToast.textContent = msg; elToast.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(()=>elToast.classList.remove('show'), 2400);
+}
+
+function cssToWorld(cx_, cy_){
+  const r = canvas.getBoundingClientRect();
+  const nx = (cx_-r.left)/r.width*2-1;
+  const ny = (cy_-r.top)/r.height*2-1;
+  return [CX + nx*HW, CY - ny*HH];
+}
+
+canvas.addEventListener('pointerdown', e=>{
+  try{ canvas.setPointerCapture(e.pointerId); }catch(err){}
+  pointerDown=true; movedFar=false;
+  downCss={x:e.clientX, y:e.clientY}; downTime=performance.now();
+  const w = cssToWorld(e.clientX, e.clientY);
+  aimOx=w[0]; aimOy=w[1];
+  beamShots=0; beamCaught=0; beamFled=0; beamTurnSum=0;
+});
+canvas.addEventListener('pointermove', e=>{
+  if(!pointerDown) return;
+  const dx=e.clientX-downCss.x, dy=e.clientY-downCss.y;
+  if(dx*dx+dy*dy > 14*14) movedFar=true;
+  if(movedFar){
+    const w = cssToWorld(e.clientX, e.clientY);
+    const ax=w[0]-aimOx, ay=w[1]-aimOy;
+    const m = Math.hypot(ax,ay);
+    if(m>1e-4){ aimDx=ax/m; aimDy=ay/m; aiming=true;
+      elTorch.style.left=(downCss.x)+'px'; elTorch.style.top=(downCss.y)+'px';
+      elTorch.classList.add('show');
+    }
+  }
+});
+function endPointer(e){
+  if(!pointerDown) return;
+  pointerDown=false;
+  const wasTap = !movedFar && (performance.now()-downTime)<420;
+  aiming=false;
+  elTorch.classList.remove('show');
+  clearTimeout(hudLinger);
+  hudLinger=setTimeout(()=>elHud.classList.remove('show'), 1800);
+  if(wasTap && shutterOpen()){
+    const w = cssToWorld(e.clientX, e.clientY);
+    starBurst(w[0], w[1]);
+  }
+}
+canvas.addEventListener('pointerup', endPointer);
+canvas.addEventListener('pointercancel', endPointer);
+
+/* margin controls */
+const bRain=document.getElementById('b-rain'), bOrbit=document.getElementById('b-orbit');
+function setRain(v){ rainOn=v; bRain.classList.toggle('on',v); bRain.querySelector('.dot').textContent=v?'●':'○'; }
+function setOrbit(v){ orbitOn=v; bOrbit.classList.toggle('on',v); bOrbit.querySelector('.dot').textContent=v?'●':'○'; }
+bRain.addEventListener('click', ()=>setRain(!rainOn));
+bOrbit.addEventListener('click', ()=>setOrbit(!orbitOn));
+setRain(true); setOrbit(false);
+
+const elExpLabel=document.getElementById('b-explabel');
+function bumpStops(d){
+  userStops = Math.max(-4, Math.min(4, userStops+d));
+  elExpLabel.textContent = 'EXP '+(userStops>0?'+':'')+(userStops%1?userStops.toFixed(1):userStops);
+}
+document.getElementById('b-expdn').addEventListener('click', ()=>bumpStops(-0.5));
+document.getElementById('b-expup').addEventListener('click', ()=>bumpStops(+0.5));
+
+document.getElementById('b-scale').addEventListener('click', ()=>{
+  scaleIdx=(scaleIdx+1)%SCALES.length; HH=SCALES[scaleIdx];
+  document.getElementById('b-scale').textContent='SCALE 1:'+HH.toFixed(1);
+  resize(); toast('plate rescaled — fresh exposure');
+});
+document.getElementById('b-new').addEventListener('click', ()=>{ resetPlate(true); toast('plate №'+plateNo+' begun'); });
+document.getElementById('b-save').addEventListener('click', ()=>{ saveRequested=true; });
+
+window.addEventListener('keydown', e=>{
+  if(e.metaKey||e.ctrlKey||e.altKey) return;
+  const k=e.key.toLowerCase();
+  if(k==='r') setRain(!rainOn);
+  else if(k==='o') setOrbit(!orbitOn);
+  else if(k==='n'){ resetPlate(true); toast('plate №'+plateNo+' begun'); }
+  else if(k==='s'){ saveRequested=true; }
+  else if(k==='-'||k==='_') bumpStops(-0.5);
+  else if(k==='='||k==='+') bumpStops(+0.5);
+});
+
+/* ── plate export ─────────────────────────────────────────────────── */
+let saveRequested=false;
+function exportPlate(){
+  const M=Math.floor(56*dpr), MB=Math.floor(150*dpr);
+  const out=document.createElement('canvas');
+  out.width=devW+2*M; out.height=devH+M+MB;
+  const c2=out.getContext('2d');
+  c2.fillStyle='#070708'; c2.fillRect(0,0,out.width,out.height);
+  c2.drawImage(canvas, M, M);
+  c2.strokeStyle='rgba(208,216,230,0.18)'; c2.lineWidth=Math.max(1,dpr*0.7);
+  c2.strokeRect(M-0.5*dpr, M-0.5*dpr, devW+dpr, devH+dpr);
+  const fs1=Math.round(11*dpr);
+  c2.font=fs1+'px Menlo, monospace';
+  c2.fillStyle='rgba(208,216,230,0.66)';
+  const by=devH+M+Math.floor(44*dpr);
+  c2.fillText('DARKROOM — LONG-EXPOSURE PHOTOGRAPH OF A SCHWARZSCHILD FIELD', M, by);
+  c2.fillStyle='rgba(208,216,230,0.34)';
+  c2.fillText('every mark is the true path of a single photon · the ring is emergent · the darkness is the horizon', M, by+Math.floor(20*dpr));
+  const label='PLATE №'+plateNo+' · '+clockStr()+' · '+stTraced.toLocaleString('en-GB')+' PHOTONS · '+pctStr()+' SWALLOWED';
+  c2.fillStyle='rgba(232,186,110,0.62)';
+  const tw=c2.measureText(label).width;
+  c2.fillText(label, out.width-M-tw, by);
+  // scale bar
+  const barW=pxPerRsCss*dpr, bx=out.width-M-barW, byy=by+Math.floor(20*dpr);
+  c2.strokeStyle='rgba(208,216,230,0.4)'; c2.lineWidth=dpr;
+  c2.beginPath();
+  c2.moveTo(bx,byy); c2.lineTo(bx+barW,byy);
+  c2.moveTo(bx,byy-4*dpr); c2.lineTo(bx,byy+4*dpr);
+  c2.moveTo(bx+barW,byy-4*dpr); c2.lineTo(bx+barW,byy+4*dpr);
+  c2.stroke();
+  c2.fillStyle='rgba(208,216,230,0.4)';
+  c2.fillText('1 rs', bx-Math.floor(34*dpr), byy+Math.floor(4*dpr));
+  const url=out.toDataURL('image/png');
+  try{
+    const a=document.createElement('a');
+    a.download='darkroom-plate-'+plateNo+'.png';
+    a.href=url;
+    a.click();
+  }catch(e){}
+  toast('plate №'+plateNo+' saved');
+  return url;
+}
+
+/* ── stats display ────────────────────────────────────────────────── */
+function clockStr(){
+  const s=Math.floor(expClock);
+  return String(Math.floor(s/60)).padStart(2,'0')+':'+String(s%60).padStart(2,'0');
+}
+function pctStr(){
+  const done=stCaptured+stEscaped;
+  return done<200 ? '—' : (100*stCaptured/done).toFixed(1)+'%';
+}
+let statTimer=0;
+function updateStats(dt){
+  statTimer+=dt;
+  if(statTimer<0.25) return;
+  statTimer=0;
+  elStats.textContent='PLATE №'+plateNo+' · EXPOSURE '+clockStr()+' · '+stTraced.toLocaleString('en-GB')+' PHOTONS · '+pctStr()+' SWALLOWED';
+  if(aiming){
+    const b=Math.abs(aimOx*aimDy - aimOy*aimDx);
+    const shots=beamCaught+beamFled;
+    let verdict;
+    if(Math.abs(b-BCRIT)<0.045) verdict='critical — winds the ring';
+    else if(b<BCRIT) verdict='inside bᴄ — swallowed';
+    else verdict='escapes, deflected';
+    let line='torch · b '+b.toFixed(2)+' rs · bᴄ 2.598 · '+verdict;
+    if(shots>120){
+      line+=' · measured: '+(100*beamCaught/shots).toFixed(0)+'% swallowed';
+      if(beamFled>40) line+=' · mean deflection '+(beamTurnSum/beamFled*180/Math.PI).toFixed(0)+'°';
+    }
+    elHud.textContent=line;
+    elHud.classList.add('show');
+  }
+}
+
+/* ── render loop ──────────────────────────────────────────────────── */
+let lastT=performance.now();
+let simT=0;
+let manualMode=false;
+function shutterOpen(){ return simT>SHUTTER_DELAY; }
+
+function frame(now){
+  let dt=(now-lastT)/1000; lastT=now;
+  if(dt>0.05) dt=0.05;
+  if(dt<0) dt=0;
+  simT+=dt;
+
+  segCount=0;
+  if(shutterOpen()){
+    expClock+=dt;
+    if(rainOn) emitRain(dt);
+    if(orbitOn) emitOrbit(dt);
+    emitBeam(dt);
+    stepPhotons(dt);
+  }
+
+  /* auto exposure: behave like auto-ISO in a darkroom */
+  const pxPerRsDev=pxPerRsCss*dpr;
+  const meanEst=energyWorld*pxPerRsDev*I_BASE*0.66/(devW*devH);
+  exposureTarget=Math.max(0.02, Math.min(11, 0.04/Math.max(meanEst,1e-5)))*Math.pow(2,userStops);
+  exposure+=(exposureTarget-exposure)*0.06;
+
+  /* 1 — expose the plate: additive trails into accumulation buffer */
+  gl.disable(gl.DEPTH_TEST);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, accum.fbo);
+  gl.viewport(0,0,devW,devH);
+  if(segCount>0){
+    gl.enable(gl.BLEND);
+    gl.blendFunc(gl.ONE, gl.ONE);
+    gl.useProgram(progLine);
+    gl.uniform2f(uLine.u_center, CX, CY);
+    gl.uniform2f(uLine.u_invHalf, 1/HW, 1/HH);
+    gl.bindBuffer(gl.ARRAY_BUFFER, segBuf);
+    gl.bufferSubData(gl.ARRAY_BUFFER, 0, segData.subarray(0, segCount*10));
+    gl.enableVertexAttribArray(0);
+    gl.enableVertexAttribArray(1);
+    gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 20, 0);
+    gl.vertexAttribPointer(1, 3, gl.FLOAT, false, 20, 8);
+    gl.drawArrays(gl.LINES, 0, segCount*2);
+    gl.disableVertexAttribArray(1);
+    gl.disable(gl.BLEND);
+  }
+
+  /* 2 — halation chain */
+  gl.bindBuffer(gl.ARRAY_BUFFER, triBuf);
+  gl.enableVertexAttribArray(0);
+  gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
+
+  gl.bindFramebuffer(gl.FRAMEBUFFER, bloomA.fbo);
+  gl.viewport(0,0,bloomA.w,bloomA.h);
+  gl.useProgram(progThresh);
+  gl.activeTexture(gl.TEXTURE0);
+  gl.bindTexture(gl.TEXTURE_2D, accum.tex);
+  gl.uniform1i(uThresh.u_src, 0);
+  gl.uniform2f(uThresh.u_texel, 1/devW, 1/devH);
+  gl.uniform1f(uThresh.u_exposure, exposure);
+  gl.uniform1f(uThresh.u_thresh, 1.05);
+  gl.drawArrays(gl.TRIANGLES, 0, 3);
+
+  gl.bindFramebuffer(gl.FRAMEBUFFER, bloomB.fbo);
+  gl.useProgram(progBlur);
+  gl.bindTexture(gl.TEXTURE_2D, bloomA.tex);
+  gl.uniform1i(uBlur.u_src, 0);
+  gl.uniform2f(uBlur.u_texel, 1/bloomA.w, 1/bloomA.h);
+  gl.uniform2f(uBlur.u_dir, 1, 0);
+  gl.drawArrays(gl.TRIANGLES, 0, 3);
+
+  gl.bindFramebuffer(gl.FRAMEBUFFER, bloomA.fbo);
+  gl.bindTexture(gl.TEXTURE_2D, bloomB.tex);
+  gl.uniform2f(uBlur.u_dir, 0, 1);
+  gl.drawArrays(gl.TRIANGLES, 0, 3);
+
+  /* 3 — develop for display */
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  gl.viewport(0,0,devW,devH);
+  gl.useProgram(progShow);
+  gl.activeTexture(gl.TEXTURE0);
+  gl.bindTexture(gl.TEXTURE_2D, accum.tex);
+  gl.uniform1i(uShow.u_src, 0);
+  gl.activeTexture(gl.TEXTURE1);
+  gl.bindTexture(gl.TEXTURE_2D, bloomA.tex);
+  gl.uniform1i(uShow.u_bloom, 1);
+  gl.activeTexture(gl.TEXTURE0);
+  gl.uniform1f(uShow.u_exposure, exposure);
+  gl.uniform1f(uShow.u_time, simT);
+  gl.uniform1f(uShow.u_bloomAmt, 0.55);
+  gl.drawArrays(gl.TRIANGLES, 0, 3);
+
+  if(saveRequested){ saveRequested=false; exportPlate(); }
+
+  updateStats(dt);
+  if(!manualMode) requestAnimationFrame(frame);
+}
+
+/* debug hooks for automated verification */
+window.__darkroom = {
+  stats: ()=>({traced:stTraced, captured:stCaptured, escaped:stEscaped,
+               active:activeCount, exposure, plate:plateNo, clock:expClock,
+               halfFloat:halfFloatOK, gl2:isGL2, energy:energyWorld,
+               segs:segCount}),
+  export: ()=>exportPlate().length,
+  star: (wx,wy)=>starBurst(wx,wy),
+  beam: (ox,oy,dx,dy,on)=>{ aimOx=ox; aimOy=oy;
+    const m=Math.hypot(dx,dy)||1; aimDx=dx/m; aimDy=dy/m; aiming=!!on; },
+  tick: (frames)=>{ // step the loop manually (hidden tabs never fire rAF)
+    manualMode=true;
+    for(let i=0;i<(frames||60);i++){ lastT+= -16.7; frame(lastT+16.7); }
+    manualMode=false;
+    requestAnimationFrame(frame);
+  }
+};
+
+resize();
+requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
